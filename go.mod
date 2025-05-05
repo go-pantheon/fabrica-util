@@ -6,7 +6,7 @@ require (
 	github.com/dromara/carbon/v2 v2.6.4
 	github.com/go-kratos/kratos/v2 v2.8.4
 	github.com/pkg/errors v0.9.1
-	github.com/redis/go-redis/v9 v9.7.3
+	github.com/redis/go-redis/v9 v9.8.0
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/speps/go-hashids/v2 v2.0.1
 	github.com/stretchr/testify v1.10.0
