@@ -3,7 +3,7 @@ module github.com/go-pantheon/fabrica-util
 go 1.23.0
 
 require (
-	github.com/dromara/carbon/v2 v2.6.4
+	github.com/dromara/carbon/v2 v2.6.6
 	github.com/go-kratos/kratos/v2 v2.8.4
 	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.7.3
