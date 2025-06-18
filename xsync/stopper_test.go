@@ -2,6 +2,7 @@ package xsync
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -103,10 +104,9 @@ func TestStopper_TurnOffWithFunction(t *testing.T) {
 	t.Parallel()
 
 	stopper := NewStopper(time.Second)
-	ctx := context.Background()
 
 	executed := false
-	err := stopper.TurnOff(ctx, func(ctx context.Context) error {
+	err := stopper.TurnOff(func() error {
 		executed = true
 		return nil
 	})
@@ -123,7 +123,7 @@ func TestStopper_TurnOffWithTimeout(t *testing.T) {
 	ctx := context.Background()
 
 	executed := make(chan struct{})
-	err := stopper.TurnOff(ctx, func(ctx context.Context) error {
+	err := stopper.TurnOff(func() error {
 		// Simulate long-running function
 		select {
 		case <-time.After(time.Second):
@@ -152,10 +152,9 @@ func TestStopper_TurnOffZeroTimeout(t *testing.T) {
 	t.Parallel()
 
 	stopper := NewStopper(0)
-	ctx := context.Background()
 
 	executed := false
-	err := stopper.TurnOff(ctx, func(ctx context.Context) error {
+	err := stopper.TurnOff(func() error {
 		executed = true
 		// Even with long operation, should not timeout
 		time.Sleep(time.Millisecond * 100)
@@ -260,7 +259,6 @@ func TestStopper_ConcurrentTurnOff(t *testing.T) {
 	t.Parallel()
 
 	stopper := NewStopper(time.Second)
-	ctx := context.Background()
 
 	const numGoroutines = 5
 
@@ -270,7 +268,7 @@ func TestStopper_ConcurrentTurnOff(t *testing.T) {
 	// Start multiple goroutines trying to turn off
 	for range numGoroutines {
 		go func() {
-			err := stopper.TurnOff(ctx, func(ctx context.Context) error {
+			err := stopper.TurnOff(func() error {
 				executed.Add(1)
 				time.Sleep(time.Millisecond * 10)
 
@@ -325,14 +323,14 @@ func TestStopper_StateTransitions(t *testing.T) {
 func TestStopper_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	stopper := NewStopper(time.Millisecond * 100)
+	stopper := NewStopper(time.Second * 2)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Cancel context before calling TurnOff
 	cancel()
 
 	executed := false
-	err := stopper.TurnOff(ctx, func(ctx context.Context) error {
+	err := stopper.TurnOff(func() error {
 		// Check if context is cancelled in the function
 		select {
 		case <-ctx.Done():
@@ -346,7 +344,7 @@ func TestStopper_ContextCancellation(t *testing.T) {
 	})
 
 	// Since the parent context is cancelled, TurnOff will return ErrCloseTimeout
-	assert.Equal(t, ErrCloseTimeout, err)
+	assert.NoError(t, err)
 	assert.False(t, executed)
 }
 
@@ -360,7 +358,7 @@ func TestStopper_TurnOffAlreadyClosing(t *testing.T) {
 	stopper.toClosingState()
 
 	executed := false
-	err := stopper.TurnOff(context.Background(), func(ctx context.Context) error {
+	err := stopper.TurnOff(func() error {
 		executed = true
 
 		return nil
@@ -369,6 +367,43 @@ func TestStopper_TurnOffAlreadyClosing(t *testing.T) {
 	// Should return no error but not execute function
 	assert.NoError(t, err)
 	assert.False(t, executed)
+}
+
+func TestStopper_GoAndQuickStop(t *testing.T) {
+	t.Parallel()
+
+	stopper := NewStopper(time.Second)
+
+	var (
+		called []string
+		mu     sync.Mutex
+	)
+
+	stop := func() error {
+		mu.Lock()
+		called = append(called, "stop")
+		mu.Unlock()
+
+		return nil
+	}
+	fn := func() error {
+		mu.Lock()
+		called = append(called, "fn")
+		mu.Unlock()
+
+		return nil
+	}
+
+	stopper.GoAndQuickStop("test", fn, stop)
+
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	assert.GreaterOrEqual(t, len(called), 2)
+	assert.Equal(t, "fn", called[0])
+	assert.Equal(t, "stop", called[1])
 }
 
 func BenchmarkStopper_TriggerStop(b *testing.B) {

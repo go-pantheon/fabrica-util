@@ -65,7 +65,7 @@ func TestGoSafe(t *testing.T) {
 
 		wg.Add(1)
 
-		GoSafe("normal test", func() error {
+		Go("normal test", func() error {
 			defer wg.Done()
 			return nil
 		})
@@ -82,7 +82,7 @@ func TestGoSafe(t *testing.T) {
 
 		expectedErr := errors.New("expected error")
 
-		GoSafe("error test", func() error {
+		Go("error test", func() error {
 			defer wg.Done()
 			return expectedErr
 		})
@@ -97,7 +97,7 @@ func TestGoSafe(t *testing.T) {
 
 		wg.Add(1)
 
-		GoSafe("panic test", func() error {
+		Go("panic test", func() error {
 			defer wg.Done()
 			panic("test panic")
 		})
@@ -113,7 +113,7 @@ func TestRunSafe(t *testing.T) {
 	t.Run("no panic", func(t *testing.T) {
 		t.Parallel()
 
-		err := RunSafe(func() error {
+		err := Run(func() error {
 			return nil
 		})
 		assert.NoError(t, err)
@@ -123,7 +123,7 @@ func TestRunSafe(t *testing.T) {
 		t.Parallel()
 
 		expectedErr := errors.New("expected error")
-		err := RunSafe(func() error {
+		err := Run(func() error {
 			return expectedErr
 		})
 		assert.Equal(t, expectedErr, err)
@@ -132,7 +132,7 @@ func TestRunSafe(t *testing.T) {
 	t.Run("panic with value", func(t *testing.T) {
 		t.Parallel()
 
-		err := RunSafe(func() error {
+		err := Run(func() error {
 			panic("string panic")
 		})
 		require.Error(t, err)
@@ -143,7 +143,7 @@ func TestRunSafe(t *testing.T) {
 		t.Parallel()
 
 		expectedErr := errors.New("error panic")
-		err := RunSafe(func() error {
+		err := Run(func() error {
 			return expectedErr
 		})
 		require.Error(t, err)
@@ -192,7 +192,7 @@ func BenchmarkGoSafe(b *testing.B) {
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			GoSafe("bench", func() error { return nil })
+			Go("bench", func() error { return nil })
 		}
 	})
 }

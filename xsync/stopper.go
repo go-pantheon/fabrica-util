@@ -24,11 +24,12 @@ var (
 type Stoppable interface {
 	StopTriggerable
 	StopWaitable
+	GoStopWaitable
 
 	// Stop is the stop function should wrap the TurnOff function
 	Stop(ctx context.Context) error
 	// TurnOff executes the f function with timeout protection
-	TurnOff(ctx context.Context, f func(ctx context.Context) error) error
+	TurnOff(f func() error) error
 }
 
 // StopTriggerable trigger close interface
@@ -44,6 +45,13 @@ type StopWaitable interface {
 	WaitStopped() <-chan struct{}
 }
 
+type GoStopWaitable interface {
+	Go(msg string, fn func() error, filters ...func(err error) bool)
+	GoWaitStop(msg string, fn func() error)
+	GoAndQuickStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool)
+	GoAndFinalStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool)
+}
+
 var _ Stoppable = (*Stopper)(nil)
 
 // Stopper implements graceful shutdown with timeout
@@ -53,6 +61,9 @@ type Stopper struct {
 
 	trigger     chan struct{} // closed when close is triggered
 	stoppedChan chan struct{} // closed when closed
+
+	cond  *sync.Cond
+	ready bool
 
 	timeout time.Duration
 }
@@ -70,11 +81,12 @@ func NewStopper(timeout time.Duration) *Stopper {
 		state:       &atomic.Int32{},
 		trigger:     make(chan struct{}),
 		stoppedChan: make(chan struct{}),
+		cond:        sync.NewCond(&sync.Mutex{}),
 		timeout:     timeout,
 	}
 }
 
-func (s *Stopper) TurnOff(ctx context.Context, f func(ctx context.Context) error) (err error) {
+func (s *Stopper) TurnOff(f func() error) (err error) {
 	s.triggerStop()
 
 	if !s.toClosingState() {
@@ -84,17 +96,17 @@ func (s *Stopper) TurnOff(ctx context.Context, f func(ctx context.Context) error
 	defer s.toClosedState()
 
 	if s.timeout <= 0 {
-		return f(ctx)
+		return f()
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 
-		err = f(ctx)
+		err = f()
 	}()
 
 	select {
@@ -119,7 +131,7 @@ func (s *Stopper) StopTriggered() <-chan struct{} {
 
 // Stop triggers the stop process
 func (s *Stopper) Stop(ctx context.Context) error {
-	return s.TurnOff(ctx, func(ctx context.Context) error {
+	return s.TurnOff(func() error {
 		return nil
 	})
 }
@@ -152,4 +164,41 @@ func (s *Stopper) toClosedState() {
 	if s.state.CompareAndSwap(stateClosing, stateClosed) {
 		close(s.stoppedChan)
 	}
+}
+
+func (s *Stopper) GoAndQuickStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool) {
+	s.GoWaitStop(msg, stop)
+	s.Go(msg, fn, filters...)
+}
+
+func (s *Stopper) Go(msg string, fn func() error, filters ...func(err error) bool) {
+	Go(msg, func() error {
+		s.cond.L.Lock()
+
+		defer func() {
+			s.ready = true
+			s.cond.Broadcast()
+			s.cond.L.Unlock()
+		}()
+
+		return fn()
+	}, filters...)
+}
+
+func (s *Stopper) GoWaitStop(msg string, fn func() error) {
+	Go(msg, func() error {
+		s.cond.L.Lock()
+
+		for !s.ready {
+			s.cond.Wait()
+		}
+
+		s.cond.L.Unlock()
+
+		return fn()
+	})
+}
+
+func (s *Stopper) GoAndFinalStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool) {
+	panic("not implemented")
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"log/slog"
 	"runtime"
+	"runtime/debug"
 
 	"github.com/go-pantheon/fabrica-util/errors"
 )
@@ -15,11 +16,11 @@ const (
 	initialRoutineIDBuffer = 128
 )
 
-// GoSafe executes a function in a separate goroutine with panic recovery.
+// Go executes a function in a separate goroutine with panic recovery.
 // It logs any errors that occur during execution.
 // msg: descriptive message for logging
 // fn: function to execute safely
-func GoSafe(msg string, fn func() error, filters ...func(err error) bool) {
+func Go(msg string, fn func() error, filters ...func(err error) bool) {
 	filter := func(err error) bool {
 		for _, f := range filters {
 			if f(err) {
@@ -35,25 +36,27 @@ func GoSafe(msg string, fn func() error, filters ...func(err error) bool) {
 			if r := recover(); r != nil {
 				slog.Error("goroutine panic recovered",
 					"message", msg,
-					"error", CatchErr(r),
+					"panic", r,
+					"stack", string(debug.Stack()),
 				)
 			}
 		}()
 
-		if err := RunSafe(fn); err != nil {
+		if err := Run(fn); err != nil {
 			if !filter(err) {
 				slog.Error("goroutine error occurred.",
 					"message", msg,
-					"error", err,
+					"error", err.Error(),
+					"stack", string(debug.Stack()),
 				)
 			}
 		}
 	}()
 }
 
-// RunSafe executes a function with panic recovery.
+// Run executes a function with panic recovery.
 // Returns the error from the function or a wrapped error if a panic occurred.
-func RunSafe(fn func() error) (err error) {
+func Run(fn func() error) (err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			err = CatchErr(p)
