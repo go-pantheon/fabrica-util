@@ -106,8 +106,9 @@ func TestStopper_TurnOffWithFunction(t *testing.T) {
 	ctx := context.Background()
 
 	executed := false
-	err := stopper.TurnOff(ctx, func(ctx context.Context) {
+	err := stopper.TurnOff(ctx, func(ctx context.Context) error {
 		executed = true
+		return nil
 	})
 
 	assert.NoError(t, err)
@@ -122,15 +123,17 @@ func TestStopper_TurnOffWithTimeout(t *testing.T) {
 	ctx := context.Background()
 
 	executed := make(chan struct{})
-	err := stopper.TurnOff(ctx, func(ctx context.Context) {
+	err := stopper.TurnOff(ctx, func(ctx context.Context) error {
 		// Simulate long-running function
 		select {
 		case <-time.After(time.Second):
 			close(executed)
 		case <-ctx.Done():
 			// Function should be cancelled by timeout
-			return
+			return nil
 		}
+
+		return nil
 	})
 
 	assert.Equal(t, ErrCloseTimeout, err)
@@ -152,10 +155,12 @@ func TestStopper_TurnOffZeroTimeout(t *testing.T) {
 	ctx := context.Background()
 
 	executed := false
-	err := stopper.TurnOff(ctx, func(ctx context.Context) {
+	err := stopper.TurnOff(ctx, func(ctx context.Context) error {
 		executed = true
 		// Even with long operation, should not timeout
 		time.Sleep(time.Millisecond * 100)
+
+		return nil
 	})
 
 	assert.NoError(t, err)
@@ -265,9 +270,11 @@ func TestStopper_ConcurrentTurnOff(t *testing.T) {
 	// Start multiple goroutines trying to turn off
 	for range numGoroutines {
 		go func() {
-			err := stopper.TurnOff(ctx, func(ctx context.Context) {
+			err := stopper.TurnOff(ctx, func(ctx context.Context) error {
 				executed.Add(1)
 				time.Sleep(time.Millisecond * 10)
+
+				return nil
 			})
 			errors <- err
 		}()
@@ -325,15 +332,17 @@ func TestStopper_ContextCancellation(t *testing.T) {
 	cancel()
 
 	executed := false
-	err := stopper.TurnOff(ctx, func(ctx context.Context) {
+	err := stopper.TurnOff(ctx, func(ctx context.Context) error {
 		// Check if context is cancelled in the function
 		select {
 		case <-ctx.Done():
 			// Expected - context should be cancelled due to timeout inheritance
-			return
+			return nil
 		default:
 			executed = true
 		}
+
+		return nil
 	})
 
 	// Since the parent context is cancelled, TurnOff will return ErrCloseTimeout
@@ -351,8 +360,10 @@ func TestStopper_TurnOffAlreadyClosing(t *testing.T) {
 	stopper.toClosingState()
 
 	executed := false
-	err := stopper.TurnOff(context.Background(), func(ctx context.Context) {
+	err := stopper.TurnOff(context.Background(), func(ctx context.Context) error {
 		executed = true
+
+		return nil
 	})
 
 	// Should return no error but not execute function

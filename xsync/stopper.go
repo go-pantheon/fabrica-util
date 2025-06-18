@@ -25,9 +25,10 @@ type Stoppable interface {
 	StopTriggerable
 	StopWaitable
 
+	// Stop is the stop function should wrap the TurnOff function
 	Stop(ctx context.Context) error
-	TurnOff(ctx context.Context, f func(ctx context.Context)) error
-	OnStopping() bool
+	// TurnOff executes the f function with timeout protection
+	TurnOff(ctx context.Context, f func(ctx context.Context) error) error
 }
 
 // StopTriggerable trigger close interface
@@ -37,6 +38,8 @@ type StopTriggerable interface {
 }
 
 type StopWaitable interface {
+	// OnStopping checks if the stop process has started
+	OnStopping() bool
 	// WaitStopped blocks until the stopper has completed stopping
 	WaitStopped() <-chan struct{}
 }
@@ -71,8 +74,7 @@ func NewStopper(timeout time.Duration) *Stopper {
 	}
 }
 
-// TurnOff executes the close function with timeout protection
-func (s *Stopper) TurnOff(ctx context.Context, f func(ctx context.Context)) error {
+func (s *Stopper) TurnOff(ctx context.Context, f func(ctx context.Context) error) (err error) {
 	s.triggerStop()
 
 	if !s.toClosingState() {
@@ -82,8 +84,7 @@ func (s *Stopper) TurnOff(ctx context.Context, f func(ctx context.Context)) erro
 	defer s.toClosedState()
 
 	if s.timeout <= 0 {
-		f(ctx)
-		return nil
+		return f(ctx)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
@@ -92,7 +93,8 @@ func (s *Stopper) TurnOff(ctx context.Context, f func(ctx context.Context)) erro
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		f(ctx)
+
+		err = f(ctx)
 	}()
 
 	select {
@@ -117,7 +119,9 @@ func (s *Stopper) StopTriggered() <-chan struct{} {
 
 // Stop triggers the stop process
 func (s *Stopper) Stop(ctx context.Context) error {
-	return s.TurnOff(ctx, func(ctx context.Context) {})
+	return s.TurnOff(ctx, func(ctx context.Context) error {
+		return nil
+	})
 }
 
 // OnStopping checks if the stop process has started
