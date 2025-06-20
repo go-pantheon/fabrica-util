@@ -86,7 +86,7 @@ Comprehensive cryptographic operations:
 
 | Technology/Component | Purpose                                 | Version |
 | -------------------- | --------------------------------------- | ------- |
-| Go                   | Primary development language            | 1.23+   |
+| Go                   | Primary development language            | 1.24+   |
 | crypto               | Cryptographic operations                | v0.39.0 |
 | go-redis             | Redis client for distributed operations | v9.10.0 |
 | PostgreSQL Driver    | Database connectivity                   | v5.7.5  |
@@ -96,7 +96,7 @@ Comprehensive cryptographic operations:
 
 ## Requirements
 
-- Go 1.23+
+- Go 1.24+
 
 ## Quick Start
 
