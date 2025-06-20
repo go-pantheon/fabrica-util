@@ -2,23 +2,26 @@ package postgresql
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
 	"time"
 
 	"github.com/go-pantheon/fabrica-util/errors"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Config holds the configuration for PostgreSQL connection
+// Config holds the configuration for PostgreSQL connection pool
 type Config struct {
-	DSN             string
-	DBName          string
-	MaxOpenConns    int
-	MaxIdleConns    int
-	ConnMaxIdleTime time.Duration
-	ConnMaxLifetime time.Duration
-	ConnectTimeout  time.Duration
+	DSN               string
+	DBName            string
+	MaxConns          int32
+	MinConns          int32
+	ConnMaxIdleTime   time.Duration
+	ConnMaxLifetime   time.Duration
+	ConnectTimeout    time.Duration
+	HealthCheckPeriod time.Duration
+	// Tracer is an optional pgx tracer for OpenTelemetry instrumentation
+	Tracer pgx.QueryTracer
 }
 
 func NewConfig(dsn, dbname string) Config {
@@ -32,16 +35,18 @@ func NewConfig(dsn, dbname string) Config {
 // DefaultConfig returns a default configuration
 func DefaultConfig() Config {
 	return Config{
-		MaxOpenConns:    20,
-		MaxIdleConns:    5,
-		ConnMaxIdleTime: 15 * time.Minute,
-		ConnMaxLifetime: 30 * time.Minute,
-		ConnectTimeout:  5 * time.Second,
+		MaxConns:          20,
+		MinConns:          5,
+		ConnMaxIdleTime:   15 * time.Minute,
+		ConnMaxLifetime:   30 * time.Minute,
+		ConnectTimeout:    5 * time.Second,
+		HealthCheckPeriod: 1 * time.Minute,
+		Tracer:            nil, // No tracing by default
 	}
 }
 
-// New creates a new PostgreSQL database connection with the given configuration
-func New(driverName string, config Config) (db *sql.DB, cleanup func(), err error) {
+// New creates a new PostgreSQL connection pool with the given configuration
+func New(config Config) (pool *pgxpool.Pool, cleanup func(), err error) {
 	if config.DSN == "" {
 		return nil, nil, errors.New("dsn is empty")
 	}
@@ -50,66 +55,71 @@ func New(driverName string, config Config) (db *sql.DB, cleanup func(), err erro
 		return nil, nil, errors.New("dbname is empty")
 	}
 
-	if driverName == "" {
-		driverName = "pgx"
-	}
-
-	db, err = sql.Open(driverName, config.DSN)
+	// Parse config from DSN
+	poolConfig, err := pgxpool.ParseConfig(config.DSN)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to open database connection")
+		return nil, nil, errors.Wrap(err, "failed to parse DSN")
 	}
 
 	// Configure connection pool
-	db.SetMaxOpenConns(config.MaxOpenConns)
-	db.SetMaxIdleConns(config.MaxIdleConns)
-	db.SetConnMaxIdleTime(config.ConnMaxIdleTime)
-	db.SetConnMaxLifetime(config.ConnMaxLifetime)
+	poolConfig.MaxConns = config.MaxConns
+	poolConfig.MinConns = config.MinConns
+	poolConfig.MaxConnIdleTime = config.ConnMaxIdleTime
+	poolConfig.MaxConnLifetime = config.ConnMaxLifetime
+	poolConfig.HealthCheckPeriod = config.HealthCheckPeriod
 
-	// Test connection
+	// Add tracer if provided
+	if config.Tracer != nil {
+		poolConfig.ConnConfig.Tracer = config.Tracer
+	}
+
+	// Create connection pool with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), config.ConnectTimeout)
 	defer cancel()
 
-	if err = db.PingContext(ctx); err != nil {
-		if closeErr := db.Close(); closeErr != nil {
-			err = errors.Join(err, closeErr)
-		}
+	pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to create connection pool")
+	}
 
+	// Test connection
+	if err = pool.Ping(ctx); err != nil {
+		pool.Close()
 		return nil, nil, errors.Wrap(err, "failed to ping database")
 	}
 
 	cleanup = func() {
-		if err := db.Close(); err != nil {
-			slog.Error("failed to close database connection", "error", err)
-		}
+		pool.Close()
+		slog.Info("database connection pool closed")
 	}
 
-	return db, cleanup, nil
+	return pool, cleanup, nil
 }
 
-// NewSimple creates a PostgreSQL connection with simple parameters (backward compatibility)
-func NewSimple(dsn, dbname string) (db *sql.DB, cleanup func(), err error) {
+// NewSimple creates a PostgreSQL connection pool with simple parameters (backward compatibility)
+func NewSimple(dsn, dbname string) (pool *pgxpool.Pool, cleanup func(), err error) {
 	config := DefaultConfig()
 	config.DSN = dsn
 	config.DBName = dbname
 
-	db, cleanup, err = New("pgx", config)
+	pool, cleanup, err = New(config)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to create database connection")
+		return nil, nil, errors.Wrap(err, "failed to create connection pool")
 	}
 
-	return db, cleanup, nil
+	return pool, cleanup, nil
 }
 
-// HealthCheck performs a health check on the database connection
-func HealthCheck(ctx context.Context, db *sql.DB) error {
-	if db == nil {
-		return errors.New("database connection is nil")
+// HealthCheck performs a health check on the database connection pool
+func HealthCheck(ctx context.Context, pool *pgxpool.Pool) error {
+	if pool == nil {
+		return errors.New("connection pool is nil")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	if err := db.PingContext(ctx); err != nil {
+	if err := pool.Ping(ctx); err != nil {
 		return errors.Wrap(err, "database health check failed")
 	}
 
@@ -117,10 +127,10 @@ func HealthCheck(ctx context.Context, db *sql.DB) error {
 }
 
 // GetConnectionStats returns connection pool statistics
-func GetConnectionStats(db *sql.DB) sql.DBStats {
-	if db == nil {
-		return sql.DBStats{}
+func GetConnectionStats(pool *pgxpool.Pool) *pgxpool.Stat {
+	if pool == nil {
+		return nil
 	}
 
-	return db.Stats()
+	return pool.Stat()
 }
