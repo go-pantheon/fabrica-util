@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -43,6 +44,14 @@ func DefaultConfig() Config {
 		HealthCheckPeriod: 1 * time.Minute,
 		Tracer:            nil, // No tracing by default
 	}
+}
+
+// DBPool defines the interface for database operations, allowing for mocking.
+type DBPool interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Close()
 }
 
 // New creates a new PostgreSQL connection pool with the given configuration
