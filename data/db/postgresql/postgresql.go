@@ -11,6 +11,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type ColumnType string
+
+const (
+	JSONB ColumnType = "JSONB"
+	BYTEA ColumnType = "BYTEA"
+)
+
 // Config holds the configuration for PostgreSQL connection pool
 type Config struct {
 	DSN               string
