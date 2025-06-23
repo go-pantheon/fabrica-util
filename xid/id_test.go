@@ -50,38 +50,74 @@ func TestCodecID(t *testing.T) {
 // 	}
 // }
 
-func TestCombineZoneID(t *testing.T) {
+func TestBuildUID(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		zoneID int64
-		zone   uint8
-		want   int64
+		name    string
+		gameID  int64
+		zone    uint8
+		wantUID int64
 	}{
 		{
-			name:   "zero values",
-			zoneID: 0,
-			zone:   0,
-			want:   0,
+			name:    "zero values",
+			gameID:  0,
+			zone:    0,
+			wantUID: 0,
 		},
 		{
-			name:   "small values",
-			zoneID: 1,
-			zone:   2,
-			want:   258, // (1 << 8) | 2 = 256 + 2 = 258
+			name:    "small values",
+			gameID:  1,
+			zone:    2,
+			wantUID: (1 << gameIDSlotBit) | (2 << zoneSlotBit),
 		},
 		{
-			name:   "max zone value",
-			zoneID: 100,
-			zone:   MaxZone,
-			want:   (100 << zoneBit) | int64(MaxZone),
+			name:    "max zone value",
+			gameID:  100,
+			zone:    MaxZone,
+			wantUID: (100 << gameIDSlotBit) | (int64(MaxZone) << zoneSlotBit),
 		},
 		{
-			name:   "large zoneID",
-			zoneID: 1<<55 - 1, // Test with a large but valid zoneID
-			zone:   123,
-			want:   ((1<<55 - 1) << zoneBit) | 123,
+			name:    "large gameID up to MaxGameID",
+			gameID:  MaxGameID,
+			zone:    123,
+			wantUID: (MaxGameID << gameIDSlotBit) | (123 << zoneSlotBit),
+		},
+		{
+			name:    "max values for gameID and zone",
+			gameID:  MaxGameID,
+			zone:    MaxZone,
+			wantUID: (MaxGameID << gameIDSlotBit) | (int64(MaxZone) << zoneSlotBit),
+		},
+		{
+			name:    "negative gameID",
+			gameID:  -1,
+			zone:    10,
+			wantUID: (-1 << gameIDSlotBit) | (10 << zoneSlotBit),
+		},
+		{
+			name:    "another negative gameID",
+			gameID:  -12345,
+			zone:    MaxZone,
+			wantUID: (-12345 << gameIDSlotBit) | (int64(MaxZone) << zoneSlotBit),
+		},
+		{
+			name:    "gameID overflows positive int64 when shifted",
+			gameID:  MaxGameID + 1,
+			zone:    0,
+			wantUID: math.MinInt64,
+		},
+		{
+			name:    "gameID is math.MaxInt64",
+			gameID:  math.MaxInt64,
+			zone:    0,
+			wantUID: -65536,
+		},
+		{
+			name:    "gameID is math.MinInt64",
+			gameID:  math.MinInt64,
+			zone:    0,
+			wantUID: 0,
 		},
 	}
 
@@ -89,45 +125,33 @@ func TestCombineZoneID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := CombineZoneID(tt.zoneID, tt.zone); got != tt.want {
-				t.Errorf("CombineZoneID() = %v, want %v", got, tt.want)
-			}
+			got, err := BuildUID(tt.gameID, tt.zone)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantUID, got, "BuildUID() = %v, want %v", got, tt.wantUID)
 		})
 	}
 }
 
-func TestSplitID(t *testing.T) {
+func TestBuildUIDError(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		id         int64
-		wantZoneID int64
-		wantZone   uint8
+		name    string
+		gameID  int64
+		zone    uint8
+		wantErr error
 	}{
 		{
-			name:       "zero value",
-			id:         0,
-			wantZoneID: 0,
-			wantZone:   0,
+			name:    "gameID too large",
+			gameID:  MaxGameID + 1,
+			zone:    0,
+			wantErr: ErrGameIDTooLarge,
 		},
 		{
-			name:       "small value",
-			id:         258, // (1 << 8) | 2 = 258
-			wantZoneID: 1,
-			wantZone:   2,
-		},
-		{
-			name:       "max zone value",
-			id:         (100 << zoneBit) | int64(MaxZone),
-			wantZoneID: 100,
-			wantZone:   MaxZone,
-		},
-		{
-			name:       "large zoneID",
-			id:         ((1<<55 - 1) << zoneBit) | 123,
-			wantZoneID: 1<<55 - 1,
-			wantZone:   123,
+			name:    "gameID too small",
+			gameID:  MinGameID - 1,
+			zone:    0,
+			wantErr: ErrGameIDTooSmall,
 		},
 	}
 
@@ -135,15 +159,78 @@ func TestSplitID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotZoneID, gotZone := SplitID(tt.id)
+			_, err := BuildUID(tt.gameID, tt.zone)
+			assert.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
 
-			if gotZoneID != tt.wantZoneID {
-				t.Errorf("SplitID() gotZoneID = %v, want %v", gotZoneID, tt.wantZoneID)
-			}
+func TestSplitUID(t *testing.T) {
+	t.Parallel()
 
-			if gotZone != tt.wantZone {
-				t.Errorf("SplitID() gotZone = %v, want %v", gotZone, tt.wantZone)
-			}
+	tests := []struct {
+		name       string
+		uid        int64
+		wantGameID int64
+		wantZone   uint8
+	}{
+		{
+			name:       "zero value",
+			uid:        0,
+			wantGameID: 0,
+			wantZone:   0,
+		},
+		{
+			name:       "small value built by BuildUID",
+			uid:        (1 << gameIDSlotBit) | (2 << zoneSlotBit),
+			wantGameID: 1,
+			wantZone:   2,
+		},
+		{
+			name:       "max zone value built by BuildUID",
+			uid:        (100 << gameIDSlotBit) | int64(MaxZone)<<zoneSlotBit,
+			wantGameID: 100,
+			wantZone:   MaxZone,
+		},
+		{
+			name:       "uid from large gameID",
+			uid:        (MaxGameID << gameIDSlotBit) | (123 << zoneSlotBit),
+			wantGameID: MaxGameID,
+			wantZone:   123,
+		},
+		{
+			name:       "uid from negative gameID",
+			uid:        (-12345 << gameIDSlotBit) | (int64(10) << zoneSlotBit),
+			wantGameID: -12345,
+			wantZone:   10,
+		},
+		{
+			name:       "uid is MaxUID (math.MaxInt64)",
+			uid:        MaxUID,
+			wantGameID: MaxUID >> gameIDSlotBit,
+			wantZone:   uint8((MaxUID >> zoneSlotBit) & zoneMask),
+		},
+		{
+			name:       "uid is -1",
+			uid:        -1,
+			wantGameID: -1,
+			wantZone:   MaxZone,
+		},
+		{
+			name:       "uid is math.MinInt64",
+			uid:        math.MinInt64,
+			wantGameID: math.MinInt64 >> gameIDSlotBit,
+			wantZone:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			gameID, zone := SplitUID(tt.uid)
+			assert.Equal(t, tt.wantGameID, gameID, "SplitUID() gotGameID = %v, want %v", gameID, tt.wantGameID)
+			assert.Equal(t, tt.wantZone, zone, "SplitUID() gotZone = %v, want %v", zone, tt.wantZone)
 		})
 	}
 }
@@ -153,45 +240,29 @@ func TestRoundTrip(t *testing.T) {
 
 	testCases := []struct {
 		name   string
-		zoneID int64
+		gameID int64
 		zone   uint8
 	}{
-		{
-			name:   "zero values",
-			zoneID: 0,
-			zone:   0,
-		},
-		{
-			name:   "small values",
-			zoneID: 1,
-			zone:   2,
-		},
-		{
-			name:   "max zone value",
-			zoneID: 100,
-			zone:   MaxZone,
-		},
-		{
-			name:   "large zoneID",
-			zoneID: 1<<55 - 1,
-			zone:   123,
-		},
+		{name: "zero values", gameID: 0, zone: 0},
+		{name: "small values", gameID: 1, zone: 2},
+		{name: "max zone value", gameID: 100, zone: MaxZone},
+		{name: "large gameID", gameID: MaxGameID, zone: 123},
+		{name: "max values", gameID: MaxGameID, zone: MaxZone},
+		{name: "negative gameID", gameID: -1, zone: 10},
+		{name: "another negative gameID", gameID: -12345, zone: MaxZone},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			combined := CombineZoneID(tc.zoneID, tc.zone)
-			gotZoneID, gotZone := SplitID(combined)
+			combined, err := BuildUID(tc.gameID, tc.zone)
+			assert.NoError(t, err)
 
-			if gotZoneID != tc.zoneID {
-				t.Errorf("RoundTrip zoneID = %v, want %v", gotZoneID, tc.zoneID)
-			}
+			gotGameID, gotZone := SplitUID(combined)
 
-			if gotZone != tc.zone {
-				t.Errorf("RoundTrip zone = %v, want %v", gotZone, tc.zone)
-			}
+			assert.Equal(t, tc.gameID, gotGameID, "RoundTrip gameID = %v, want %v", gotGameID, tc.gameID)
+			assert.Equal(t, tc.zone, gotZone, "RoundTrip zone = %v, want %v", gotZone, tc.zone)
 		})
 	}
 }
@@ -217,15 +288,21 @@ func newRand() *mathrand.Rand {
 
 func BenchmarkEncodeID(b *testing.B) {
 	id := newRand().Int64N(math.MaxInt64)
-	for i := 0; i < b.N; i++ {
-		_, _ = EncodeID(id)
-	}
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = EncodeID(id)
+		}
+	})
 }
 
 func BenchmarkDecodeID(b *testing.B) {
 	id := newRand().Int64N(65535)
-	for i := 0; i < b.N; i++ {
-		str, _ := EncodeID(id)
-		_, _ = DecodeID(str)
-	}
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			str, _ := EncodeID(id)
+			_, _ = DecodeID(str)
+		}
+	})
 }

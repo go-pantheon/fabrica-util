@@ -101,8 +101,8 @@ func addMissingColumns(ctx context.Context, db xpg.DBPool, table string, t refle
 
 func getExistingColumns(ctx context.Context, db xpg.DBPool, tableName string) (map[string]bool, error) {
 	query := `
-		SELECT column_name 
-		FROM information_schema.columns 
+		SELECT column_name
+		FROM information_schema.columns
 		WHERE table_schema = 'public' AND table_name = $1;
 	`
 	rows, err := db.Query(ctx, query, tableName)

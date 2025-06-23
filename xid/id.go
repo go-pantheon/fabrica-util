@@ -2,19 +2,42 @@
 package xid
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
-	"github.com/pkg/errors"
+	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/speps/go-hashids/v2"
 )
 
 const (
-	idStrLen = 18
-	salt     = "fabrica2020"
-	zoneBit  = 8
+	uidHashLen = 18
+	salt       = "go-pahtheon#2020"
+)
+
+const (
+	gameIDSlotBit = 16
+	gameIDBit     = 63 - gameIDSlotBit
+	gameIDMask    = (1 << gameIDBit) - 1
+	MaxGameID     = int64(gameIDMask)
+	MinGameID     = -MaxGameID
+)
+
+const (
+	MaxUID = int64(math.MaxInt64)
+)
+
+const (
+	zoneBit     = 8
+	zoneSlotBit = 8
+	zoneMask    = (1 << zoneBit) - 1
 	// MaxZone is the maximum zone value (255) used in ID encoding
-	MaxZone = (1 << zoneBit) - 1
+	MaxZone = uint8(zoneMask)
+)
+
+var (
+	ErrGameIDTooLarge = errors.New("gameID is too large")
+	ErrGameIDTooSmall = errors.New("gameID is too small")
 )
 
 var (
@@ -24,7 +47,7 @@ var (
 func init() {
 	hd := hashids.NewData()
 	hd.Salt = salt
-	hd.MinLength = idStrLen
+	hd.MinLength = uidHashLen
 
 	var err error
 	if h, err = hashids.NewWithData(hd); err != nil {
@@ -32,19 +55,27 @@ func init() {
 	}
 }
 
-// CombineZoneID combines a zoneID with a zone value to create a combined ID
-func CombineZoneID(zoneID int64, zone uint8) int64 {
-	return (zoneID << zoneBit) | int64(zone)
+// BuildUID combines a zoneID with a zone value to create a combined ID
+func BuildUID(gameID int64, zone uint8) (int64, error) {
+	if gameID > MaxGameID {
+		return 0, ErrGameIDTooLarge
+	}
+
+	if gameID < MinGameID {
+		return 0, ErrGameIDTooSmall
+	}
+
+	return (gameID << gameIDSlotBit) | int64(zone)<<zoneSlotBit, nil
 }
 
-// SplitID splits a combined ID into its zoneID and zone components
-func SplitID(id int64) (zoneID int64, zone uint8) {
-	zoneID = id >> zoneBit
-	// Safely extract the zone bits without overflow risk
-	zoneBits := id & 0xFF  // This is safe as 0xFF (255) is within int64 range
-	zone = uint8(zoneBits) // This is safe as zoneBits is guaranteed to be 0-255
+// SplitUID splits a combined ID into its zoneID and zone components
+func SplitUID(uid int64) (gameID int64, zone uint8) {
+	gameID = uid >> gameIDSlotBit
 
-	return
+	zoneBits := uid >> zoneSlotBit & zoneMask
+	zone = uint8(zoneBits)
+
+	return gameID, zone
 }
 
 // EncodeID encodes an ID into a string representation
