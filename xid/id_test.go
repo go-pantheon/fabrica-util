@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCodecID(t *testing.T) {
@@ -58,66 +59,84 @@ func TestBuildUID(t *testing.T) {
 		gameID  int64
 		zone    uint8
 		wantUID int64
+		wantErr error
 	}{
 		{
 			name:    "zero values",
 			gameID:  0,
 			zone:    0,
 			wantUID: 0,
+			wantErr: nil,
 		},
 		{
 			name:    "small values",
 			gameID:  1,
 			zone:    2,
 			wantUID: (1 << gameIDSlotBit) | (2 << zoneSlotBit),
+			wantErr: nil,
 		},
 		{
 			name:    "max zone value",
 			gameID:  100,
 			zone:    MaxZone,
 			wantUID: (100 << gameIDSlotBit) | (int64(MaxZone) << zoneSlotBit),
+			wantErr: nil,
 		},
 		{
 			name:    "large gameID up to MaxGameID",
 			gameID:  MaxGameID,
 			zone:    123,
 			wantUID: (MaxGameID << gameIDSlotBit) | (123 << zoneSlotBit),
+			wantErr: nil,
 		},
 		{
 			name:    "max values for gameID and zone",
 			gameID:  MaxGameID,
 			zone:    MaxZone,
 			wantUID: (MaxGameID << gameIDSlotBit) | (int64(MaxZone) << zoneSlotBit),
+			wantErr: nil,
 		},
 		{
 			name:    "negative gameID",
 			gameID:  -1,
 			zone:    10,
 			wantUID: (-1 << gameIDSlotBit) | (10 << zoneSlotBit),
+			wantErr: nil,
 		},
 		{
 			name:    "another negative gameID",
 			gameID:  -12345,
 			zone:    MaxZone,
 			wantUID: (-12345 << gameIDSlotBit) | (int64(MaxZone) << zoneSlotBit),
+			wantErr: nil,
 		},
 		{
 			name:    "gameID overflows positive int64 when shifted",
 			gameID:  MaxGameID + 1,
 			zone:    0,
-			wantUID: math.MinInt64,
+			wantUID: 0,
+			wantErr: ErrGameIDTooLarge,
 		},
 		{
 			name:    "gameID is math.MaxInt64",
 			gameID:  math.MaxInt64,
 			zone:    0,
-			wantUID: -65536,
+			wantUID: 0,
+			wantErr: ErrGameIDTooLarge,
+		},
+		{
+			name:    "gameID is MinGameID",
+			gameID:  MinGameID - 1,
+			zone:    0,
+			wantUID: 0,
+			wantErr: ErrGameIDTooSmall,
 		},
 		{
 			name:    "gameID is math.MinInt64",
 			gameID:  math.MinInt64,
 			zone:    0,
 			wantUID: 0,
+			wantErr: ErrGameIDTooSmall,
 		},
 	}
 
@@ -126,8 +145,13 @@ func TestBuildUID(t *testing.T) {
 			t.Parallel()
 
 			got, err := BuildUID(tt.gameID, tt.zone)
-			assert.NoError(t, err)
-			assert.Equal(t, tt.wantUID, got, "BuildUID() = %v, want %v", got, tt.wantUID)
+			if tt.wantErr != nil {
+				assert.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantUID, got, "BuildUID() = %v, want %v", got, tt.wantUID)
+			}
+
 		})
 	}
 }
