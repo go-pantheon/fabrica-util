@@ -151,7 +151,6 @@ func TestBuildUID(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, tt.wantUID, got, "BuildUID() = %v, want %v", got, tt.wantUID)
 			}
-
 		})
 	}
 }
