@@ -1,3 +1,5 @@
+//go:build integration
+
 // DOCKER_HOST=unix://{{dockerpath}}/docker.sock TESTCONTAINERS_RYUK_DISABLED=true go test ./app/player/internal/data/migrate/...
 package migrate_test
 
@@ -87,6 +89,7 @@ func (s *MigratorSuite) SetupSuite() {
 
 func (s *MigratorSuite) TearDownSuite() {
 	ctx := context.Background()
+
 	s.db.Close()
 	err := s.pgContainer.Terminate(ctx)
 	require.NoError(s.T(), err)
@@ -102,6 +105,7 @@ func (s *MigratorSuite) BeforeTest(suiteName, testName string) {
 
 	for rows.Next() {
 		var tableName string
+
 		require.NoError(s.T(), rows.Scan(&tableName))
 		_, err := s.db.Exec(context.Background(), fmt.Sprintf(`DROP TABLE IF EXISTS "%s" CASCADE`, tableName))
 		require.NoError(s.T(), err)
@@ -109,6 +113,8 @@ func (s *MigratorSuite) BeforeTest(suiteName, testName string) {
 }
 
 func TestMigratorSuite(t *testing.T) {
+	t.Parallel()
+
 	suite.Run(t, new(MigratorSuite))
 }
 
@@ -152,6 +158,7 @@ func (s *MigratorSuite) Test03_Migrate_AddColumn() {
 	type InitialModel struct {
 		ID int `colname:"id"`
 	}
+
 	err := migrate.Migrate(ctx, s.db, &InitialModel{}, nil)
 	require.NoError(t, err)
 	s.assertColumnExists("initial_model", "id", "integer")
@@ -162,6 +169,7 @@ func (s *MigratorSuite) Test03_Migrate_AddColumn() {
 		ID       int    `colname:"id"`
 		NewField string `colname:"new_field"`
 	}
+
 	err = migrate.Migrate(ctx, s.db, &UpdatedModel{}, nil)
 	require.NoError(t, err)
 	s.assertColumnExists("updated_model", "new_field", "text")
@@ -230,7 +238,9 @@ func (s *MigratorSuite) Test08_Migrate_WithExtraColumns() {
 // Helper Assertions
 func (s *MigratorSuite) assertColumnExists(tableName, columnName, expectedType string) {
 	t := s.T()
+
 	var dataType string
+
 	query := `
         SELECT data_type FROM information_schema.columns
         WHERE table_name = $1 AND column_name = $2
@@ -242,9 +252,11 @@ func (s *MigratorSuite) assertColumnExists(tableName, columnName, expectedType s
 	if expectedType == "integer" && dataType == "serial" {
 		dataType = "integer"
 	}
+
 	if strings.HasPrefix(expectedType, "varchar") && dataType == "character varying" {
 		return
 	}
+
 	if expectedType == "boolean" && dataType == "boolean" {
 		return
 	}
@@ -254,7 +266,9 @@ func (s *MigratorSuite) assertColumnExists(tableName, columnName, expectedType s
 
 func (s *MigratorSuite) assertColumnDoesNotExist(tableName, columnName string) {
 	t := s.T()
+
 	var exists bool
+
 	query := `
         SELECT EXISTS (
             SELECT 1 FROM information_schema.columns
@@ -268,7 +282,9 @@ func (s *MigratorSuite) assertColumnDoesNotExist(tableName, columnName string) {
 
 func (s *MigratorSuite) assertTableDoesNotExist(tableName string) {
 	t := s.T()
+
 	var exists bool
+
 	query := `
         SELECT EXISTS (
             SELECT 1 FROM information_schema.tables

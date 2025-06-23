@@ -20,6 +20,7 @@ func New(ctx context.Context, dbsn, dbname string) (*mongo.Database, func(), err
 	if dbsn == "" {
 		return nil, nil, errors.New("mongo dbsn is empty")
 	}
+
 	if dbname == "" {
 		return nil, nil, errors.New("mongo dbname is empty")
 	}
@@ -43,6 +44,7 @@ func New(ctx context.Context, dbsn, dbname string) (*mongo.Database, func(), err
 
 	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+
 	if err = cli.Ping(pingCtx, readpref.Primary()); err != nil {
 		cleanup()
 		return nil, nil, errors.Wrap(err, "mongo ping failed")

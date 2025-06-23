@@ -45,9 +45,11 @@ func getTableName(model any) string {
 
 func createTableIfNotExists(ctx context.Context, db xpg.DBPool, tableName string, modelType reflect.Type) error {
 	var columns []string
+
 	for i := 0; i < modelType.NumField(); i++ {
 		field := modelType.Field(i)
 		columnName, columnType := getColumnInfo(field)
+
 		if columnName != "" {
 			columns = append(columns, fmt.Sprintf(`"%s" %s`, columnName, columnType))
 		}
@@ -59,6 +61,7 @@ func createTableIfNotExists(ctx context.Context, db xpg.DBPool, tableName string
 
 	createSQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS "%s" (%s);`, tableName, strings.Join(columns, ", "))
 	_, err := db.Exec(ctx, createSQL)
+
 	return errors.Wrapf(err, "failed to create table %s", tableName)
 }
 
@@ -76,6 +79,7 @@ func addMissingColumns(ctx context.Context, db xpg.DBPool, table string, t refle
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		columnName, columnType := getColumnInfo(field)
+
 		if columnName == "" {
 			continue
 		}
@@ -102,17 +106,21 @@ func getExistingColumns(ctx context.Context, db xpg.DBPool, tableName string) (m
 		WHERE table_schema = 'public' AND table_name = $1;
 	`
 	rows, err := db.Query(ctx, query, tableName)
+
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to query existing columns for table %s", tableName)
 	}
+
 	defer rows.Close()
 
 	columns := make(map[string]bool)
+
 	for rows.Next() {
 		var columnName string
 		if err := rows.Scan(&columnName); err != nil {
 			return nil, errors.Wrap(err, "failed to scan column name")
 		}
+
 		columns[columnName] = true
 	}
 
@@ -123,6 +131,7 @@ func getColumnInfo(field reflect.StructField) (string, string) {
 	if !field.IsExported() {
 		return "", ""
 	}
+
 	tag := field.Tag
 	colName := tag.Get("pgname")
 	colType := tag.Get("pgtype")
