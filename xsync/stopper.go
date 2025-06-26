@@ -12,15 +12,15 @@ import (
 var (
 	// ErrIsStopped is returned when the stopper is already stopped
 	ErrIsStopped = errors.New("stopper is already stopped")
-	// ErrStopByTrigger is returned when close is triggered
+	// ErrStopByTrigger is returned when stop is triggered
 	ErrStopByTrigger = errors.New("stop by trigger")
 	// ErrSignalStop is returned when the stopper is stopped by signal
 	ErrSignalStop = errors.New("stop by signal")
-	// ErrCloseTimeout is returned when the close function timed out
-	ErrCloseTimeout = errors.New("close function timed out")
+	// ErrTurnOffTimeout is returned when the turn off function timed out
+	ErrTurnOffTimeout = errors.New("turn off function timed out")
 )
 
-// Stoppable lifecycle close manager interface
+// Stoppable lifecycle stop manager interface
 type Stoppable interface {
 	StopTriggerable
 	StopWaitable
@@ -32,9 +32,9 @@ type Stoppable interface {
 	TurnOff(f func() error) error
 }
 
-// StopTriggerable trigger close interface
+// StopTriggerable trigger stop interface
 type StopTriggerable interface {
-	// CloseTriggered returns channel that's closed when close is triggered
+	// StopTriggered returns channel that's stopped when stop is triggered
 	StopTriggered() <-chan struct{}
 }
 
@@ -57,10 +57,10 @@ var _ Stoppable = (*Stopper)(nil)
 // Stopper implements graceful shutdown with timeout
 type Stopper struct {
 	mu    sync.Mutex
-	state *atomic.Int32 // 0=idle, 1=triggered, 2=closing, 3=closed
+	state *atomic.Int32 // 0=idle, 1=triggered, 2=stopping, 3=stopped
 
-	trigger     chan struct{} // closed when close is triggered
-	stoppedChan chan struct{} // closed when closed
+	trigger     chan struct{} // closed when stop is triggered
+	stoppedChan chan struct{} // closed when stopped
 
 	cond  *sync.Cond
 	ready bool
@@ -71,8 +71,8 @@ type Stopper struct {
 const (
 	stateIdle = iota
 	stateTriggered
-	stateClosing
-	stateClosed
+	stateStopping
+	stateStopped
 )
 
 // NewStopper creates a new Stopper implements Stoppable interface
@@ -89,11 +89,11 @@ func NewStopper(timeout time.Duration) *Stopper {
 func (s *Stopper) TurnOff(f func() error) (err error) {
 	s.triggerStop()
 
-	if !s.toClosingState() {
-		return nil // Already closing or closed
+	if !s.toStoppingState() {
+		return nil // Already stopping or stopped
 	}
 
-	defer s.toClosedState()
+	defer s.toStoppedState()
 
 	if s.timeout <= 0 {
 		return f()
@@ -113,7 +113,7 @@ func (s *Stopper) TurnOff(f func() error) (err error) {
 	case <-done:
 		return nil
 	case <-ctx.Done():
-		return ErrCloseTimeout
+		return ErrTurnOffTimeout
 	}
 }
 
@@ -138,7 +138,7 @@ func (s *Stopper) Stop(ctx context.Context) error {
 
 // OnStopping checks if the stop process has started
 func (s *Stopper) OnStopping() bool {
-	return s.state.Load() >= stateClosing
+	return s.state.Load() >= stateStopping
 }
 
 // WaitStopped blocks until the stopper has completed stopping
@@ -146,22 +146,22 @@ func (s *Stopper) WaitStopped() <-chan struct{} {
 	return s.stoppedChan
 }
 
-// stateToClosing attempts to transition to closing state
-func (s *Stopper) toClosingState() bool {
+// stateToStopping attempts to transition to stopping state
+func (s *Stopper) toStoppingState() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	currentState := s.state.Load()
-	if currentState >= stateClosing {
-		return false // Already closing or closed
+	if currentState >= stateStopping {
+		return false // Already stopping or stopped
 	}
 
-	return s.state.CompareAndSwap(currentState, stateClosing)
+	return s.state.CompareAndSwap(currentState, stateStopping)
 }
 
-// stateToClosed transitions to closed state
-func (s *Stopper) toClosedState() {
-	if s.state.CompareAndSwap(stateClosing, stateClosed) {
+// stateToStopped transitions to stopped state
+func (s *Stopper) toStoppedState() {
+	if s.state.CompareAndSwap(stateStopping, stateStopped) {
 		close(s.stoppedChan)
 	}
 }

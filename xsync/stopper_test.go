@@ -81,7 +81,7 @@ func TestStopper_Stop(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Should be in closed state
-	assert.Equal(t, int32(stateClosed), stopper.state.Load())
+	assert.Equal(t, int32(stateStopped), stopper.state.Load())
 
 	// StopTriggered should be closed
 	select {
@@ -113,7 +113,7 @@ func TestStopper_TurnOffWithFunction(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.True(t, executed)
-	assert.Equal(t, int32(stateClosed), stopper.state.Load())
+	assert.Equal(t, int32(stateStopped), stopper.state.Load())
 }
 
 func TestStopper_TurnOffWithTimeout(t *testing.T) {
@@ -136,8 +136,8 @@ func TestStopper_TurnOffWithTimeout(t *testing.T) {
 		return nil
 	})
 
-	assert.Equal(t, ErrCloseTimeout, err)
-	assert.Equal(t, int32(stateClosed), stopper.state.Load())
+	assert.Equal(t, ErrTurnOffTimeout, err)
+	assert.Equal(t, int32(stateStopped), stopper.state.Load())
 
 	// Function should not complete
 	select {
@@ -164,7 +164,7 @@ func TestStopper_TurnOffZeroTimeout(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.True(t, executed)
-	assert.Equal(t, int32(stateClosed), stopper.state.Load())
+	assert.Equal(t, int32(stateStopped), stopper.state.Load())
 }
 
 func TestStopper_OnStopping(t *testing.T) {
@@ -180,7 +180,7 @@ func TestStopper_OnStopping(t *testing.T) {
 	assert.False(t, stopper.OnStopping())
 
 	// After entering closing state
-	stopper.toClosingState()
+	stopper.toStoppingState()
 	assert.True(t, stopper.OnStopping())
 }
 
@@ -225,7 +225,7 @@ func TestStopper_MultipleStops(t *testing.T) {
 	err2 := stopper.Stop(ctx)
 	assert.NoError(t, err2)
 
-	assert.Equal(t, int32(stateClosed), stopper.state.Load())
+	assert.Equal(t, int32(stateStopped), stopper.state.Load())
 }
 
 func TestStopper_ConcurrentStops(t *testing.T) {
@@ -252,7 +252,7 @@ func TestStopper_ConcurrentStops(t *testing.T) {
 	}
 
 	// Should be in closed state
-	assert.Equal(t, int32(stateClosed), stopper.state.Load())
+	assert.Equal(t, int32(stateStopped), stopper.state.Load())
 }
 
 func TestStopper_ConcurrentTurnOff(t *testing.T) {
@@ -286,7 +286,7 @@ func TestStopper_ConcurrentTurnOff(t *testing.T) {
 
 	// Only one function should have executed
 	assert.Equal(t, int32(1), executed.Load())
-	assert.Equal(t, int32(stateClosed), stopper.state.Load())
+	assert.Equal(t, int32(stateStopped), stopper.state.Load())
 }
 
 func TestStopper_StateTransitions(t *testing.T) {
@@ -302,22 +302,22 @@ func TestStopper_StateTransitions(t *testing.T) {
 	assert.Equal(t, int32(stateTriggered), stopper.state.Load())
 
 	// To closing state
-	success := stopper.toClosingState()
+	success := stopper.toStoppingState()
 	assert.True(t, success)
-	assert.Equal(t, int32(stateClosing), stopper.state.Load())
+	assert.Equal(t, int32(stateStopping), stopper.state.Load())
 
 	// Try to go to closing again (should fail)
-	success = stopper.toClosingState()
+	success = stopper.toStoppingState()
 	assert.False(t, success)
-	assert.Equal(t, int32(stateClosing), stopper.state.Load())
+	assert.Equal(t, int32(stateStopping), stopper.state.Load())
 
 	// To closed state
-	stopper.toClosedState()
-	assert.Equal(t, int32(stateClosed), stopper.state.Load())
+	stopper.toStoppedState()
+	assert.Equal(t, int32(stateStopped), stopper.state.Load())
 
 	// Try to go to closed again (should be idempotent)
-	stopper.toClosedState()
-	assert.Equal(t, int32(stateClosed), stopper.state.Load())
+	stopper.toStoppedState()
+	assert.Equal(t, int32(stateStopped), stopper.state.Load())
 }
 
 func TestStopper_ContextCancellation(t *testing.T) {
@@ -355,7 +355,7 @@ func TestStopper_TurnOffAlreadyClosing(t *testing.T) {
 
 	// Manually set to closing state
 	stopper.triggerStop()
-	stopper.toClosingState()
+	stopper.toStoppingState()
 
 	executed := false
 	err := stopper.TurnOff(func() error {
