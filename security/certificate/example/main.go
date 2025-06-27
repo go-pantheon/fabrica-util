@@ -9,11 +9,6 @@ import (
 )
 
 func main() {
-	pair, err := certificate.GenKeyPair()
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	cert, err := certificate.CreateSelfSignedCert(pkix.Name{
 		CommonName: "janus.go-pantheon.dev",
 		Country:    []string{"SG"},
@@ -28,13 +23,18 @@ func main() {
 		log.Fatal(err)
 	}
 
-	pri, err := certificate.ExportPriToPEM(pair.Pri)
+	pri, err := certificate.ExportPriToPEM(cert.KeyPair.Pri)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("\ncert PEM: \n%s\n", string(cert.CertPEM))
 	fmt.Printf("\nprivate PEM: \n%s\n", string(pri))
+	fmt.Printf("\ncert PEM: \n%s\n", string(cert.CertPEM))
+	pub, err := certificate.ExportPubToPEM(cert.KeyPair.Pub)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("\npublic PEM: \n%s\n", string(pub))
 
 	fmt.Printf("subject: %s\n", cert.X509Cert.Subject.String())
 	fmt.Printf("issuer: %s\n", cert.X509Cert.Issuer.String())
@@ -43,7 +43,7 @@ func main() {
 	fmt.Printf("serial: %s\n", cert.X509Cert.SerialNumber.String())
 
 	org := []byte("hello world")
-	signRet, err := certificate.Sign(pair.Pri, org)
+	signRet, err := certificate.Sign(cert.KeyPair.Pri, org)
 
 	if err != nil {
 		log.Fatal(err)
@@ -51,7 +51,7 @@ func main() {
 
 	fmt.Printf("signature: %s\n", certificate.EncodeBase64(signRet.Sign))
 
-	valid := certificate.VerifySignResult(signRet)
+	valid := certificate.Verify(cert.KeyPair.Pub, org, signRet.Sign)
 	fmt.Printf("signature verification result: %t\n", valid)
 
 	fmt.Println("succeed")
