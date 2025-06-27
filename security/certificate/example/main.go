@@ -30,10 +30,12 @@ func main() {
 
 	fmt.Printf("\nprivate PEM: \n%s\n", string(pri))
 	fmt.Printf("\ncert PEM: \n%s\n", string(cert.CertPEM))
+
 	pub, err := certificate.ExportPubToPEM(cert.KeyPair.Pub)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	fmt.Printf("\npublic PEM: \n%s\n", string(pub))
 
 	fmt.Printf("subject: %s\n", cert.X509Cert.Subject.String())
