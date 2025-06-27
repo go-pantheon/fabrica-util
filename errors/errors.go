@@ -2,10 +2,18 @@
 package errors
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 
 	pkgerrors "github.com/pkg/errors"
 )
+
+// stackTracer is an interface for errors that have a stack trace.
+// It is used to check if an error has a stack trace from github.com/pkg/errors.
+type stackTracer interface {
+	StackTrace() pkgerrors.StackTrace
+}
 
 // New returns a new error with the given message
 // It's a wrapper around github.com/pkg/errors.New
@@ -87,4 +95,30 @@ func As(err error, target any) bool {
 // It's a wrapper around github.com/pkg/errors.Unwrap
 func Unwrap(err error) error {
 	return pkgerrors.Unwrap(err)
+}
+
+// StackTrace returns the stack trace of an error, if available.
+// It returns an empty string if the error does not contain a stack trace.
+func StackTrace(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	st, ok := err.(stackTracer)
+	if !ok {
+		return ""
+	}
+
+	stack := st.StackTrace()
+	if len(stack) == 0 {
+		return ""
+	}
+
+	buf := new(bytes.Buffer)
+	// The format of the stack trace is compatible with pkg/errors.
+	for _, f := range stack {
+		_, _ = fmt.Fprintf(buf, "%+v\n", f)
+	}
+
+	return buf.String()
 }

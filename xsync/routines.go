@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"log/slog"
 	"runtime"
-	"runtime/debug"
 
 	"github.com/go-pantheon/fabrica-util/errors"
 )
@@ -15,27 +14,6 @@ const DefaultStackSize = 64 << 10 // 64KB
 const (
 	initialRoutineIDBuffer = 128
 )
-
-// errorWithStack is an error that holds a stack trace.
-type errorWithStack struct {
-	err   error
-	stack []byte
-}
-
-// Error returns the message of the original error.
-func (e *errorWithStack) Error() string {
-	return e.err.Error()
-}
-
-// Stack returns the captured stack trace.
-func (e *errorWithStack) Stack() []byte {
-	return e.stack
-}
-
-// Unwrap returns the original wrapped error.
-func (e *errorWithStack) Unwrap() error {
-	return e.err
-}
 
 // Go executes a function in a separate goroutine with panic recovery.
 // It logs any errors that occur during execution.
@@ -56,30 +34,20 @@ func Go(msg string, fn func() error, filters ...func(err error) bool) {
 		defer func() {
 			if r := recover(); r != nil {
 				err := CatchErr(r)
-				var stack string
-				// Check if the error has a stack trace.
-				if st, ok := err.(interface{ Stack() []byte }); ok {
-					stack = string(st.Stack())
-				}
 				slog.Error("goroutine panic recovered",
 					"message", msg,
 					"error", err.Error(),
-					"stack", stack,
+					"stack", errors.StackTrace(err),
 				)
 			}
 		}()
 
 		if err := Run(fn); err != nil {
 			if !filter(err) {
-				var stack string
-				// Check if the error has a stack trace.
-				if st, ok := err.(interface{ Stack() []byte }); ok {
-					stack = string(st.Stack())
-				}
 				slog.Error("goroutine error occurred.",
 					"message", msg,
 					"error", err.Error(),
-					"stack", stack,
+					"stack", errors.StackTrace(err),
 				)
 			}
 		}
@@ -148,10 +116,7 @@ func CatchErr(r any) error {
 		err = errors.Errorf("%v", r)
 	}
 
-	return &errorWithStack{
-		err:   err,
-		stack: debug.Stack(),
-	}
+	return err
 }
 
 // CatchErrWithSize creates an error with a custom sized stack trace from a recovered panic.
