@@ -45,3 +45,8 @@ func ComputeSharedKey(pri [32]byte, pub [32]byte) ([]byte, error) {
 
 	return secret, nil
 }
+
+func ComputePubKey(pri [32]byte) (pub [32]byte, err error) {
+	curve25519.ScalarBaseMult(&pub, &pri)
+	return pub, nil
+}

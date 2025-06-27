@@ -86,6 +86,18 @@ func TestSharedSecret(t *testing.T) {
 	}
 }
 
+func TestComputePubKey(t *testing.T) {
+	t.Parallel()
+
+	pri, pub, err := GenKeyPair()
+	assert.NoError(t, err)
+
+	pub2, err := ComputePubKey(pri)
+	assert.NoError(t, err)
+
+	assert.Equal(t, pub, pub2)
+}
+
 func BenchmarkKeyGeneration(b *testing.B) {
 	b.ReportAllocs()
 
