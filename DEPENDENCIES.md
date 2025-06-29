@@ -19,7 +19,7 @@ Some packages may only be included on certain architectures or operating systems
  - [github.com/klauspost/compress/internal/snapref](https://pkg.go.dev/github.com/klauspost/compress/internal/snapref) ([BSD-3-Clause](https://github.com/klauspost/compress/blob/v1.18.0/internal/snapref/LICENSE))
  - [github.com/klauspost/compress/zstd/internal/xxhash](https://pkg.go.dev/github.com/klauspost/compress/zstd/internal/xxhash) ([MIT](https://github.com/klauspost/compress/blob/v1.18.0/zstd/internal/xxhash/LICENSE.txt))
  - [github.com/pkg/errors](https://pkg.go.dev/github.com/pkg/errors) ([BSD-2-Clause](https://github.com/pkg/errors/blob/v0.9.1/LICENSE))
- - [github.com/redis/go-redis/v9](https://pkg.go.dev/github.com/redis/go-redis/v9) ([BSD-2-Clause](https://github.com/redis/go-redis/blob/v9.10.0/LICENSE))
+ - [github.com/redis/go-redis/v9](https://pkg.go.dev/github.com/redis/go-redis/v9) ([BSD-2-Clause](https://github.com/redis/go-redis/blob/v9.11.0/LICENSE))
  - [github.com/spaolacci/murmur3](https://pkg.go.dev/github.com/spaolacci/murmur3) ([BSD-3-Clause](https://github.com/spaolacci/murmur3/blob/v1.1.0/LICENSE))
  - [github.com/speps/go-hashids/v2](https://pkg.go.dev/github.com/speps/go-hashids/v2) ([MIT](https://github.com/speps/go-hashids/blob/v2.0.1/LICENSE))
  - [github.com/xdg-go/pbkdf2](https://pkg.go.dev/github.com/xdg-go/pbkdf2) ([Apache-2.0](https://github.com/xdg-go/pbkdf2/blob/v1.0.0/LICENSE))
