@@ -13,13 +13,11 @@ import (
 	"github.com/go-pantheon/fabrica-util/errors"
 )
 
-func Migrate(ctx context.Context, db xpg.DBPool, model any, extracols map[string]string) error {
+func Migrate(ctx context.Context, db xpg.DBPool, tableName string, model any, extracols map[string]string) error {
 	modelType := reflect.TypeOf(model)
 	if modelType.Kind() == reflect.Ptr {
 		modelType = modelType.Elem()
 	}
-
-	tableName := getTableName(model)
 
 	// Create table if not exists
 	if err := createTableIfNotExists(ctx, db, tableName, modelType); err != nil {
