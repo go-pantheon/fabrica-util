@@ -28,19 +28,6 @@ func Migrate(ctx context.Context, db xpg.DBPool, tableName string, model any, ex
 	return addMissingColumns(ctx, db, tableName, modelType, extracols)
 }
 
-func getTableName(model any) string {
-	if tabler, ok := model.(interface{ TableName() string }); ok {
-		return tabler.TableName()
-	}
-
-	modelType := reflect.TypeOf(model)
-	if modelType.Kind() == reflect.Ptr {
-		modelType = modelType.Elem()
-	}
-
-	return camelcase.ToUnderScore(modelType.Name())
-}
-
 func createTableIfNotExists(ctx context.Context, db xpg.DBPool, tableName string, modelType reflect.Type) error {
 	var columns []string
 
