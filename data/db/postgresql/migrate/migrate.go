@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"context"
+	"crypto/md5"
 	"fmt"
 	"maps"
 	"reflect"
@@ -13,12 +14,152 @@ import (
 	"github.com/go-pantheon/fabrica-util/errors"
 )
 
+// Migrate migrates the database schema based on the model struct.
+// This function maintains backward compatibility with the original API.
 func Migrate(ctx context.Context, db xpg.DBPool, tableName string, model any, extracols map[string]string) error {
+	return MigrateWithVersionControl(ctx, db, tableName, model, extracols, "auto_migrations")
+}
+
+// MigrateWithVersionControl migrates the database schema with version control.
+// It uses the new migration system to track changes and provide rollback capabilities.
+func MigrateWithVersionControl(ctx context.Context, db xpg.DBPool, tableName string, model any, extracols map[string]string, migrationTable string) error {
 	modelType := reflect.TypeOf(model)
 	if modelType.Kind() == reflect.Ptr {
 		modelType = modelType.Elem()
 	}
 
+	// Create migrator instance
+	migrator := NewMigrator(db, migrationTable)
+
+	// Generate migration ID based on table name and model structure
+	migrationID := generateMigrationID(tableName, modelType, extracols)
+
+	// Check if this migration already exists and is applied
+	statuses, err := migrator.Status(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to check migration status")
+	}
+
+	// Check if migration is already applied
+	for _, status := range statuses {
+		if status.ID == migrationID && status.Applied {
+			// Migration already applied, check if we need to add new columns
+			return addMissingColumnsWithVersionControl(ctx, db, migrator, tableName, modelType, extracols, migrationID)
+		}
+	}
+
+	// Create migration for table creation and initial columns
+	migrator.AddFunc(migrationID, fmt.Sprintf("Auto-migrate table %s", tableName),
+		func(ctx context.Context, db xpg.DBPool) error {
+			return createTableAndColumns(ctx, db, tableName, modelType, extracols)
+		},
+		func(ctx context.Context, db xpg.DBPool) error {
+			return dropTable(ctx, db, tableName)
+		},
+	)
+
+	// Execute the migration
+	return migrator.Up(ctx)
+}
+
+// AutoMigrator provides a convenient way to manage auto-migrations with version control
+type AutoMigrator struct {
+	*Migrator
+	registeredModels map[string]modelInfo
+}
+
+type modelInfo struct {
+	tableName string
+	modelType reflect.Type
+	extracols map[string]string
+}
+
+// NewAutoMigrator creates a new auto-migrator instance
+func NewAutoMigrator(db xpg.DBPool, migrationTable string) *AutoMigrator {
+	if migrationTable == "" {
+		migrationTable = "auto_migrations"
+	}
+
+	return &AutoMigrator{
+		Migrator:         NewMigrator(db, migrationTable),
+		registeredModels: make(map[string]modelInfo),
+	}
+}
+
+// RegisterModel registers a model for auto-migration
+func (am *AutoMigrator) RegisterModel(tableName string, model any, extracols map[string]string) {
+	modelType := reflect.TypeOf(model)
+	if modelType.Kind() == reflect.Ptr {
+		modelType = modelType.Elem()
+	}
+
+	am.registeredModels[tableName] = modelInfo{
+		tableName: tableName,
+		modelType: modelType,
+		extracols: extracols,
+	}
+}
+
+// MigrateAll migrates all registered models
+func (am *AutoMigrator) MigrateAll(ctx context.Context) error {
+	for tableName, info := range am.registeredModels {
+		if err := am.migrateModel(ctx, tableName, info); err != nil {
+			return errors.Wrapf(err, "failed to migrate model %s", tableName)
+		}
+	}
+
+	return am.Up(ctx)
+}
+
+// migrateModel creates migrations for a specific model
+func (am *AutoMigrator) migrateModel(_ context.Context, tableName string, info modelInfo) error {
+	migrationID := generateMigrationID(tableName, info.modelType, info.extracols)
+
+	// Check if migration already exists
+	if _, exists := am.migrations[migrationID]; exists {
+		return nil
+	}
+
+	// Add migration
+	am.AddFunc(migrationID, fmt.Sprintf("Auto-migrate table %s", tableName),
+		func(ctx context.Context, db xpg.DBPool) error {
+			return createTableAndColumns(ctx, db, tableName, info.modelType, info.extracols)
+		},
+		func(ctx context.Context, db xpg.DBPool) error {
+			return dropTable(ctx, db, tableName)
+		},
+	)
+
+	return nil
+}
+
+// generateMigrationID generates a unique migration ID based on table name and model structure
+func generateMigrationID(tableName string, modelType reflect.Type, extracols map[string]string) string {
+	// Create a hash of the table structure to detect changes
+	hash := md5.New()
+
+	// Include table name
+	fmt.Fprintf(hash, "%s", tableName)
+
+	// Include model fields
+	for i := 0; i < modelType.NumField(); i++ {
+		field := modelType.Field(i)
+		columnName, columnType := getColumnInfo(field)
+		if columnName != "" {
+			fmt.Fprintf(hash, "%s:%s", columnName, columnType)
+		}
+	}
+
+	// Include extra columns
+	for name, colType := range extracols {
+		fmt.Fprintf(hash, "%s:%s", name, colType)
+	}
+
+	return fmt.Sprintf("auto_%s_%x", tableName, hash.Sum(nil)[:8])
+}
+
+// createTableAndColumns creates table and adds all columns
+func createTableAndColumns(ctx context.Context, db xpg.DBPool, tableName string, modelType reflect.Type, extracols map[string]string) error {
 	// Create table if not exists
 	if err := createTableIfNotExists(ctx, db, tableName, modelType); err != nil {
 		return err
@@ -28,15 +169,97 @@ func Migrate(ctx context.Context, db xpg.DBPool, tableName string, model any, ex
 	return addMissingColumns(ctx, db, tableName, modelType, extracols)
 }
 
-func createTableIfNotExists(ctx context.Context, db xpg.DBPool, tableName string, modelType reflect.Type) error {
-	var columns []string
+// addMissingColumnsWithVersionControl adds missing columns and creates new migrations for them
+func addMissingColumnsWithVersionControl(ctx context.Context, db xpg.DBPool, migrator *Migrator, tableName string, modelType reflect.Type, extracols map[string]string, baseMigrationID string) error {
+	existingColumns, err := getExistingColumns(ctx, db, tableName)
+	if err != nil {
+		return err
+	}
+
+	expectedColumns := make(map[string]string)
+	if extracols != nil {
+		expectedColumns = maps.Clone(extracols)
+	}
 
 	for i := 0; i < modelType.NumField(); i++ {
 		field := modelType.Field(i)
 		columnName, columnType := getColumnInfo(field)
 
-		if columnName != "" {
-			columns = append(columns, fmt.Sprintf(`"%s" %s`, columnName, columnType))
+		if columnName == "" {
+			continue
+		}
+
+		expectedColumns[columnName] = columnType
+	}
+
+	var newColumns []string
+	for columnName, columnType := range expectedColumns {
+		if _, exists := existingColumns[columnName]; !exists {
+			newColumns = append(newColumns, fmt.Sprintf(`"%s" %s`, columnName, columnType))
+		}
+	}
+
+	// If there are new columns, create a new migration
+	if len(newColumns) > 0 {
+		hashSum := md5.Sum([]byte(strings.Join(newColumns, ",")))
+		newMigrationID := fmt.Sprintf("%s_add_columns_%x", baseMigrationID, hashSum[:4])
+
+		migrator.AddFunc(newMigrationID, fmt.Sprintf("Add columns to table %s", tableName),
+			func(ctx context.Context, db xpg.DBPool) error {
+				for columnName, columnType := range expectedColumns {
+					if _, exists := existingColumns[columnName]; !exists {
+						alterSQL := fmt.Sprintf(`ALTER TABLE "%s" ADD COLUMN "%s" %s;`, tableName, columnName, columnType)
+						if _, err := db.Exec(ctx, alterSQL); err != nil {
+							return errors.Wrapf(err, "failed to add column %s to table %s", columnName, tableName)
+						}
+					}
+				}
+				return nil
+			},
+			func(ctx context.Context, db xpg.DBPool) error {
+				// Drop the newly added columns
+				for columnName := range expectedColumns {
+					if _, exists := existingColumns[columnName]; !exists {
+						alterSQL := fmt.Sprintf(`ALTER TABLE "%s" DROP COLUMN IF EXISTS "%s";`, tableName, columnName)
+						if _, err := db.Exec(ctx, alterSQL); err != nil {
+							return errors.Wrapf(err, "failed to drop column %s from table %s", columnName, tableName)
+						}
+					}
+				}
+				return nil
+			},
+		)
+
+		return migrator.Up(ctx)
+	}
+
+	return nil
+}
+
+// dropTable drops a table (used for rollback)
+func dropTable(ctx context.Context, db xpg.DBPool, tableName string) error {
+	dropSQL := fmt.Sprintf(`DROP TABLE IF EXISTS "%s";`, tableName)
+	_, err := db.Exec(ctx, dropSQL)
+	return errors.Wrapf(err, "failed to drop table %s", tableName)
+}
+
+// Below are the original functions, kept for internal use and backward compatibility
+
+func createTableIfNotExists(ctx context.Context, db xpg.DBPool, tableName string, modelType reflect.Type) error {
+	var columns []string
+
+	for i := 0; i < modelType.NumField(); i++ {
+		field := modelType.Field(i)
+
+		// Try new orm tag first
+		if columnTag, err := defaultTagParser.ParseTag(field); err == nil && columnTag != nil {
+			columns = append(columns, defaultTagParser.BuildColumnDefinition(columnTag))
+		} else {
+			// Fallback to legacy method
+			columnName, columnType := getLegacyColumnInfo(field)
+			if columnName != "" {
+				columns = append(columns, fmt.Sprintf(`"%s" %s`, columnName, columnType))
+			}
 		}
 	}
 
@@ -112,11 +335,25 @@ func getExistingColumns(ctx context.Context, db xpg.DBPool, tableName string) (m
 	return columns, nil
 }
 
+// Global tag parser instance
+var defaultTagParser = NewTagParser()
+
 func getColumnInfo(field reflect.StructField) (string, string) {
 	if !field.IsExported() {
 		return "", ""
 	}
 
+	// Try new orm tag first
+	if columnTag, err := defaultTagParser.ParseTag(field); err == nil && columnTag != nil {
+		return columnTag.Column, columnTag.Type
+	}
+
+	// Fallback to legacy tags for backward compatibility
+	return getLegacyColumnInfo(field)
+}
+
+// getLegacyColumnInfo handles the old pgname/pgtype/primarykey tags for backward compatibility
+func getLegacyColumnInfo(field reflect.StructField) (string, string) {
 	tag := field.Tag
 	colName := tag.Get("pgname")
 	colType := tag.Get("pgtype")
