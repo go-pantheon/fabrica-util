@@ -10,6 +10,8 @@ import (
 )
 
 func TestTagParser_New(t *testing.T) {
+	t.Parallel()
+
 	// Test creating new tag parser
 	parser := NewTagParser()
 
@@ -17,6 +19,8 @@ func TestTagParser_New(t *testing.T) {
 }
 
 func TestTagParser_ParseTag_Simple(t *testing.T) {
+	t.Parallel()
+
 	parser := NewTagParser()
 
 	// Test simple tag parsing
@@ -38,6 +42,8 @@ func TestTagParser_ParseTag_Simple(t *testing.T) {
 }
 
 func TestTagParser_ParseTag_Complex(t *testing.T) {
+	t.Parallel()
+
 	parser := NewTagParser()
 
 	// Test complex tag parsing
@@ -59,6 +65,8 @@ func TestTagParser_ParseTag_Complex(t *testing.T) {
 }
 
 func TestTagParser_ParseTag_ColumnName(t *testing.T) {
+	t.Parallel()
+
 	parser := NewTagParser()
 
 	// Test parsing tag with column name
@@ -78,6 +86,8 @@ func TestTagParser_ParseTag_ColumnName(t *testing.T) {
 }
 
 func TestTagParser_ParseTag_Type(t *testing.T) {
+	t.Parallel()
+
 	parser := NewTagParser()
 
 	// Test parsing tag with type
@@ -96,6 +106,8 @@ func TestTagParser_ParseTag_Type(t *testing.T) {
 }
 
 func TestTagParser_ParseTag_PrecisionScale(t *testing.T) {
+	t.Parallel()
+
 	parser := NewTagParser()
 
 	// Test parsing tag with precision and scale
@@ -114,6 +126,8 @@ func TestTagParser_ParseTag_PrecisionScale(t *testing.T) {
 }
 
 func TestTagParser_ParseTag_NoTag(t *testing.T) {
+	t.Parallel()
+
 	parser := NewTagParser()
 
 	// Test field without orm tag
@@ -133,6 +147,8 @@ func TestTagParser_ParseTag_NoTag(t *testing.T) {
 }
 
 func TestTagParser_ParseTag_TimeField(t *testing.T) {
+	t.Parallel()
+
 	parser := NewTagParser()
 
 	// Test time.Time field without orm tag (should be auto-included)
@@ -151,6 +167,8 @@ func TestTagParser_ParseTag_TimeField(t *testing.T) {
 }
 
 func TestTagParser_ParseTag_TypeInference(t *testing.T) {
+	t.Parallel()
+
 	parser := NewTagParser()
 
 	// Test type inference for different Go types
@@ -168,6 +186,8 @@ func TestTagParser_ParseTag_TypeInference(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			field := reflect.StructField{
 				Name: "TestField",
 				Type: tc.goType,
@@ -184,6 +204,8 @@ func TestTagParser_ParseTag_TypeInference(t *testing.T) {
 }
 
 func TestTagParser_BuildColumnDefinition(t *testing.T) {
+	t.Parallel()
+
 	parser := NewTagParser()
 
 	// Test building column definition
@@ -205,6 +227,8 @@ func TestTagParser_BuildColumnDefinition(t *testing.T) {
 }
 
 func TestTagParser_BuildColumnDefinition_WithPrecisionScale(t *testing.T) {
+	t.Parallel()
+
 	parser := NewTagParser()
 
 	// Test building column definition with precision and scale
@@ -223,6 +247,8 @@ func TestTagParser_BuildColumnDefinition_WithPrecisionScale(t *testing.T) {
 }
 
 func TestColumnTag_DefaultValues(t *testing.T) {
+	t.Parallel()
+
 	// Test default values of ColumnTag
 	tag := ColumnTag{}
 
@@ -241,6 +267,8 @@ func TestColumnTag_DefaultValues(t *testing.T) {
 }
 
 func TestColumnTag_AllFields(t *testing.T) {
+	t.Parallel()
+
 	// Test all fields of ColumnTag
 	extra := make(map[string]string)
 	extra["custom"] = "value"

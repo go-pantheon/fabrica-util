@@ -32,8 +32,7 @@ func NewDBFromConfig(config Config) (*DB, func(), error) {
 		return nil, nil, err
 	}
 
-	db := NewDB(pool)
-	return db, cleanup, nil
+	return NewDB(pool), cleanup, nil
 }
 
 // NewDBSimple creates a new DB instance with simple parameters
@@ -43,8 +42,7 @@ func NewDBSimple(dsn, dbname string) (*DB, func(), error) {
 		return nil, nil, err
 	}
 
-	db := NewDB(pool)
-	return db, cleanup, nil
+	return NewDB(pool), cleanup, nil
 }
 
 // Exec executes a query without returning any rows
@@ -125,6 +123,7 @@ func (db *DB) Close() error {
 	}
 
 	db.pool.Close()
+
 	return nil
 }
 
@@ -149,6 +148,7 @@ func (db *DB) Stats() sql.DBStats {
 	}
 
 	stat := db.pool.Stat()
+
 	return sql.DBStats{
 		MaxOpenConnections: int(stat.MaxConns()),
 		OpenConnections:    int(stat.TotalConns()),

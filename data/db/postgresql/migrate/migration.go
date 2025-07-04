@@ -69,24 +69,29 @@ func (m *Migrator) ensureMigrationTable(ctx context.Context) error {
 	`, m.tableName)
 
 	_, err := m.db.Exec(ctx, createSQL)
+
 	return err
 }
 
 // getAppliedMigrations returns a set of applied migration IDs
 func (m *Migrator) getAppliedMigrations(ctx context.Context) (map[string]bool, error) {
 	query := fmt.Sprintf(`SELECT "id" FROM "%s"`, m.tableName)
+
 	rows, err := m.db.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
+
 	defer rows.Close()
 
 	applied := make(map[string]bool)
+
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
+
 		applied[id] = true
 	}
 
@@ -101,6 +106,7 @@ func (m *Migrator) recordMigration(ctx context.Context, migration *Migration) er
 	`, m.tableName)
 
 	_, err := m.db.Exec(ctx, insertSQL, migration.ID, migration.Comment)
+
 	return err
 }
 
@@ -108,6 +114,7 @@ func (m *Migrator) recordMigration(ctx context.Context, migration *Migration) er
 func (m *Migrator) removeMigrationRecord(ctx context.Context, migrationID string) error {
 	deleteSQL := fmt.Sprintf(`DELETE FROM "%s" WHERE "id" = $1`, m.tableName)
 	_, err := m.db.Exec(ctx, deleteSQL, migrationID)
+
 	return err
 }
 
@@ -123,6 +130,7 @@ func (m *Migrator) Up(ctx context.Context) error {
 	}
 
 	var executed int
+
 	for id, migration := range m.migrations {
 		if !applied[id] {
 			if err := migration.Up(ctx, m.db); err != nil {
@@ -154,7 +162,9 @@ func (m *Migrator) Down(ctx context.Context) error {
 	`, m.tableName)
 
 	row := m.db.QueryRow(ctx, query)
+
 	var lastMigrationID string
+
 	if err := row.Scan(&lastMigrationID); err != nil {
 		return fmt.Errorf("no migrations to rollback")
 	}
@@ -198,6 +208,7 @@ func (m *Migrator) DownTo(ctx context.Context, targetID string) error {
 	defer rows.Close()
 
 	var toRollback []string
+
 	var foundTarget bool
 
 	for rows.Next() {
@@ -260,11 +271,13 @@ func (m *Migrator) Reset(ctx context.Context) error {
 	defer rows.Close()
 
 	var toRollback []string
+
 	for rows.Next() {
 		var migrationID string
 		if err := rows.Scan(&migrationID); err != nil {
 			return fmt.Errorf("failed to scan migration ID: %w", err)
 		}
+
 		toRollback = append(toRollback, migrationID)
 	}
 
@@ -317,8 +330,10 @@ func (m *Migrator) Status(ctx context.Context) ([]MigrationStatus, error) {
 	defer rows.Close()
 
 	appliedMap := make(map[string]MigrationStatus)
+
 	for rows.Next() {
 		var id, comment string
+
 		var appliedAt time.Time
 		if err := rows.Scan(&id, &appliedAt, &comment); err != nil {
 			return nil, fmt.Errorf("failed to scan migration record: %w", err)
@@ -334,6 +349,7 @@ func (m *Migrator) Status(ctx context.Context) ([]MigrationStatus, error) {
 
 	// Build complete status list
 	var statuses []MigrationStatus
+
 	for id, migration := range m.migrations {
 		if status, exists := appliedMap[id]; exists {
 			statuses = append(statuses, status)

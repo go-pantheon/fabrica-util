@@ -223,6 +223,7 @@ func (p *TagParser) hasFlag(params map[string]string, names ...string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -239,6 +240,7 @@ func (p *TagParser) isKnownParameter(key string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -311,8 +313,10 @@ func (p *TagParser) inferTypeFromField(field reflect.StructField, columnTag *Col
 			if columnTag.Scale > 0 {
 				return fmt.Sprintf("NUMERIC(%d,%d)", columnTag.Precision, columnTag.Scale)
 			}
+
 			return fmt.Sprintf("NUMERIC(%d)", columnTag.Precision)
 		}
+
 		return "DOUBLE PRECISION"
 	case reflect.Bool:
 		return "BOOLEAN"
@@ -320,16 +324,19 @@ func (p *TagParser) inferTypeFromField(field reflect.StructField, columnTag *Col
 		if columnTag.Size > 0 {
 			return fmt.Sprintf("VARCHAR(%d)", columnTag.Size)
 		}
+
 		return "TEXT"
 	case reflect.Struct:
 		if fieldType == reflect.TypeOf(time.Time{}) {
 			return "TIMESTAMPTZ"
 		}
+
 		return "JSONB"
 	case reflect.Slice:
 		if fieldType.Elem().Kind() == reflect.Uint8 {
 			return "BYTEA"
 		}
+
 		return "JSONB"
 	default:
 		return "JSONB"
@@ -348,6 +355,7 @@ func (p *TagParser) validateColumnName(name string) error {
 	if err != nil {
 		return err
 	}
+
 	if !matched {
 		return errors.New("column name must be a valid identifier")
 	}
@@ -401,12 +409,15 @@ func (p *TagParser) validateSize(size string) error {
 	if err != nil {
 		return errors.New("size must be a valid integer")
 	}
+
 	if s <= 0 {
 		return errors.New("size must be positive")
 	}
+
 	if s > 65535 {
 		return errors.New("size too large (max 65535)")
 	}
+
 	return nil
 }
 
@@ -415,12 +426,15 @@ func (p *TagParser) validatePrecision(precision string) error {
 	if err != nil {
 		return errors.New("precision must be a valid integer")
 	}
+
 	if prec <= 0 {
 		return errors.New("precision must be positive")
 	}
+
 	if prec > 1000 {
 		return errors.New("precision too large (max 1000)")
 	}
+
 	return nil
 }
 
@@ -429,12 +443,15 @@ func (p *TagParser) validateScale(scale string) error {
 	if err != nil {
 		return errors.New("scale must be a valid integer")
 	}
+
 	if s < 0 {
 		return errors.New("scale must be non-negative")
 	}
+
 	if s > 1000 {
 		return errors.New("scale too large (max 1000)")
 	}
+
 	return nil
 }
 
@@ -447,6 +464,7 @@ func (p *TagParser) validateDefault(defaultVal string) error {
 	// Check for SQL injection patterns (basic check)
 	dangerous := []string{";", "--", "/*", "*/", "xp_", "sp_"}
 	lowerVal := strings.ToLower(defaultVal)
+
 	for _, pattern := range dangerous {
 		if strings.Contains(lowerVal, pattern) {
 			return errors.Errorf("default value contains potentially dangerous pattern: %s", pattern)
@@ -460,6 +478,7 @@ func (p *TagParser) validateComment(comment string) error {
 	if len(comment) > 1024 {
 		return errors.New("comment too long (max 1024 characters)")
 	}
+
 	return nil
 }
 

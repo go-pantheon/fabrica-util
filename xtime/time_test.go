@@ -322,10 +322,10 @@ func TestInTimezone(t *testing.T) {
 	})
 }
 
-//nolint:paralleltest // modifies global locale state
+// modifies global locale state
+//
+//nolint:paralleltest
 func TestGetLocation(t *testing.T) {
-	t.Parallel()
-
 	t.Run("with initialized location", func(t *testing.T) {
 		err := Init(Config{Language: "en", Timezone: "Asia/Shanghai"})
 		require.NoError(t, err)
@@ -335,8 +335,6 @@ func TestGetLocation(t *testing.T) {
 	})
 
 	t.Run("without initialized location", func(t *testing.T) {
-		t.Parallel()
-
 		// Reset global variable
 		location.Store(time.UTC)
 

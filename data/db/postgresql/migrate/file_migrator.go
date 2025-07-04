@@ -72,14 +72,16 @@ func (fm *FileMigrator) LoadMigrations() error {
 // ensureMigrationsDir creates the migrations directory if it doesn't exist
 func (fm *FileMigrator) ensureMigrationsDir() error {
 	if _, err := os.Stat(fm.migrationsDir); os.IsNotExist(err) {
-		return os.MkdirAll(fm.migrationsDir, 0755)
+		return os.MkdirAll(fm.migrationsDir, 0750)
 	}
+
 	return nil
 }
 
 // findMigrationFiles scans the migration directory for migration files
 func (fm *FileMigrator) findMigrationFiles() ([]MigrationFile, error) {
 	var files []MigrationFile
+
 	migrationMap := make(map[string]*MigrationFile)
 
 	// Pattern: {timestamp}_{name}.up.sql or {timestamp}_{name}.down.sql
@@ -140,7 +142,7 @@ func (fm *FileMigrator) findMigrationFiles() ([]MigrationFile, error) {
 
 // executeSQLFile reads and executes SQL from a file
 func (fm *FileMigrator) executeSQLFile(ctx context.Context, db xpg.DBPool, filePath string) error {
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return errors.Wrapf(err, "failed to read migration file %s", filePath)
 	}
@@ -182,7 +184,7 @@ func (fm *FileMigrator) CreateMigration(name string) error {
 	upContent := fmt.Sprintf("-- Migration: %s\n-- Created at: %s\n\n-- Add your up migration here\n",
 		strings.ReplaceAll(name, "_", " "), getCurrentTime())
 
-	if err := os.WriteFile(upFile, []byte(upContent), 0644); err != nil {
+	if err := os.WriteFile(upFile, []byte(upContent), 0600); err != nil {
 		return errors.Wrapf(err, "failed to create up migration file %s", upFile)
 	}
 
@@ -190,25 +192,21 @@ func (fm *FileMigrator) CreateMigration(name string) error {
 	downContent := fmt.Sprintf("-- Rollback for: %s\n-- Created at: %s\n\n-- Add your down migration here\n",
 		strings.ReplaceAll(name, "_", " "), getCurrentTime())
 
-	if err := os.WriteFile(downFile, []byte(downContent), 0644); err != nil {
+	if err := os.WriteFile(downFile, []byte(downContent), 0600); err != nil {
 		return errors.Wrapf(err, "failed to create down migration file %s", downFile)
 	}
 
 	fmt.Printf("Created migration files:\n  %s\n  %s\n", upFile, downFile)
+
 	return nil
 }
 
 // getCurrentTimestamp returns current unix timestamp
 func getCurrentTimestamp() int64 {
-	return timeNow().Unix()
+	return time.Now().Unix()
 }
 
 // getCurrentTime returns current time as string
 func getCurrentTime() string {
-	return timeNow().Format("2006-01-02 15:04:05")
-}
-
-// timeNow returns current time (can be mocked for testing)
-var timeNow = func() time.Time {
-	return time.Now()
+	return time.Now().Format("2006-01-02 15:04:05")
 }

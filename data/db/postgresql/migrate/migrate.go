@@ -2,7 +2,7 @@ package migrate
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
 	"maps"
 	"reflect"
@@ -32,7 +32,10 @@ func MigrateWithVersionControl(ctx context.Context, db xpg.DBPool, tableName str
 	migrator := NewMigrator(db, migrationTable)
 
 	// Generate migration ID based on table name and model structure
-	migrationID := generateMigrationID(tableName, modelType, extracols)
+	migrationID, err := generateMigrationID(tableName, modelType, extracols)
+	if err != nil {
+		return errors.Wrapf(err, "failed to generate migration ID for table %s", tableName)
+	}
 
 	// Check if this migration already exists and is applied
 	statuses, err := migrator.Status(ctx)
@@ -113,7 +116,10 @@ func (am *AutoMigrator) MigrateAll(ctx context.Context) error {
 
 // migrateModel creates migrations for a specific model
 func (am *AutoMigrator) migrateModel(_ context.Context, tableName string, info modelInfo) error {
-	migrationID := generateMigrationID(tableName, info.modelType, info.extracols)
+	migrationID, err := generateMigrationID(tableName, info.modelType, info.extracols)
+	if err != nil {
+		return errors.Wrapf(err, "failed to generate migration ID for table %s", tableName)
+	}
 
 	// Check if migration already exists
 	if _, exists := am.migrations[migrationID]; exists {
@@ -134,28 +140,35 @@ func (am *AutoMigrator) migrateModel(_ context.Context, tableName string, info m
 }
 
 // generateMigrationID generates a unique migration ID based on table name and model structure
-func generateMigrationID(tableName string, modelType reflect.Type, extracols map[string]string) string {
+func generateMigrationID(tableName string, modelType reflect.Type, extracols map[string]string) (string, error) {
 	// Create a hash of the table structure to detect changes
-	hash := md5.New()
+	hash := sha256.New()
 
 	// Include table name
-	fmt.Fprintf(hash, "%s", tableName)
+	if _, err := fmt.Fprintf(hash, "%s", tableName); err != nil {
+		return "", errors.Wrapf(err, "failed to write to hash")
+	}
 
 	// Include model fields
 	for i := 0; i < modelType.NumField(); i++ {
 		field := modelType.Field(i)
+
 		columnName, columnType := getColumnInfo(field)
 		if columnName != "" {
-			fmt.Fprintf(hash, "%s:%s", columnName, columnType)
+			if _, err := fmt.Fprintf(hash, "%s:%s", columnName, columnType); err != nil {
+				return "", errors.Wrapf(err, "failed to write to hash")
+			}
 		}
 	}
 
 	// Include extra columns
 	for name, colType := range extracols {
-		fmt.Fprintf(hash, "%s:%s", name, colType)
+		if _, err := fmt.Fprintf(hash, "%s:%s", name, colType); err != nil {
+			return "", errors.Wrapf(err, "failed to write to hash")
+		}
 	}
 
-	return fmt.Sprintf("auto_%s_%x", tableName, hash.Sum(nil)[:8])
+	return fmt.Sprintf("auto_%s_%x", tableName, hash.Sum(nil)[:8]), nil
 }
 
 // createTableAndColumns creates table and adds all columns
@@ -170,6 +183,8 @@ func createTableAndColumns(ctx context.Context, db xpg.DBPool, tableName string,
 }
 
 // addMissingColumnsWithVersionControl adds missing columns and creates new migrations for them
+//
+//nolint:gocognit
 func addMissingColumnsWithVersionControl(ctx context.Context, db xpg.DBPool, migrator *Migrator, tableName string, modelType reflect.Type, extracols map[string]string, baseMigrationID string) error {
 	existingColumns, err := getExistingColumns(ctx, db, tableName)
 	if err != nil {
@@ -193,6 +208,7 @@ func addMissingColumnsWithVersionControl(ctx context.Context, db xpg.DBPool, mig
 	}
 
 	var newColumns []string
+
 	for columnName, columnType := range expectedColumns {
 		if _, exists := existingColumns[columnName]; !exists {
 			newColumns = append(newColumns, fmt.Sprintf(`"%s" %s`, columnName, columnType))
@@ -201,7 +217,7 @@ func addMissingColumnsWithVersionControl(ctx context.Context, db xpg.DBPool, mig
 
 	// If there are new columns, create a new migration
 	if len(newColumns) > 0 {
-		hashSum := md5.Sum([]byte(strings.Join(newColumns, ",")))
+		hashSum := sha256.Sum256([]byte(strings.Join(newColumns, ",")))
 		newMigrationID := fmt.Sprintf("%s_add_columns_%x", baseMigrationID, hashSum[:4])
 
 		migrator.AddFunc(newMigrationID, fmt.Sprintf("Add columns to table %s", tableName),
@@ -214,6 +230,7 @@ func addMissingColumnsWithVersionControl(ctx context.Context, db xpg.DBPool, mig
 						}
 					}
 				}
+
 				return nil
 			},
 			func(ctx context.Context, db xpg.DBPool) error {
@@ -226,6 +243,7 @@ func addMissingColumnsWithVersionControl(ctx context.Context, db xpg.DBPool, mig
 						}
 					}
 				}
+
 				return nil
 			},
 		)
@@ -240,6 +258,7 @@ func addMissingColumnsWithVersionControl(ctx context.Context, db xpg.DBPool, mig
 func dropTable(ctx context.Context, db xpg.DBPool, tableName string) error {
 	dropSQL := fmt.Sprintf(`DROP TABLE IF EXISTS "%s";`, tableName)
 	_, err := db.Exec(ctx, dropSQL)
+
 	return errors.Wrapf(err, "failed to drop table %s", tableName)
 }
 

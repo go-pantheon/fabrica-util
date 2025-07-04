@@ -1,7 +1,7 @@
 package migrate
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
 	"reflect"
 	"testing"
@@ -29,6 +29,8 @@ type TestPost struct {
 }
 
 func TestAutoMigrator_New(t *testing.T) {
+	t.Parallel()
+
 	// Test creating AutoMigrator
 	autoMigrator := NewAutoMigrator(nil, "auto_migrations")
 
@@ -38,6 +40,8 @@ func TestAutoMigrator_New(t *testing.T) {
 }
 
 func TestAutoMigrator_RegisterModel(t *testing.T) {
+	t.Parallel()
+
 	autoMigrator := NewAutoMigrator(nil, "auto_migrations")
 
 	// Test registering a model
@@ -52,6 +56,8 @@ func TestAutoMigrator_RegisterModel(t *testing.T) {
 }
 
 func TestAutoMigrator_RegisterMultipleModels(t *testing.T) {
+	t.Parallel()
+
 	autoMigrator := NewAutoMigrator(nil, "auto_migrations")
 
 	// Test registering multiple models
@@ -66,6 +72,8 @@ func TestAutoMigrator_RegisterMultipleModels(t *testing.T) {
 }
 
 func TestModelInfo_Struct(t *testing.T) {
+	t.Parallel()
+
 	// Test modelInfo creation
 	info := modelInfo{
 		tableName: "test_users",
@@ -80,33 +88,44 @@ func TestModelInfo_Struct(t *testing.T) {
 }
 
 func TestGenerateMigrationID(t *testing.T) {
+	t.Parallel()
+
 	// Test generating migration ID
-	id := generateMigrationID("test_users", reflect.TypeOf(TestUser{}), nil)
+	id, err := generateMigrationID("test_users", reflect.TypeOf(TestUser{}), nil)
+	require.NoError(t, err)
 
 	assert.NotEmpty(t, id, "Expected non-empty migration ID")
 
 	// Test consistency
-	id2 := generateMigrationID("test_users", reflect.TypeOf(TestUser{}), nil)
+	id2, err := generateMigrationID("test_users", reflect.TypeOf(TestUser{}), nil)
+	require.NoError(t, err)
 	assert.Equal(t, id, id2, "Expected consistent migration ID for same inputs")
 
 	// Test different inputs produce different IDs
-	id3 := generateMigrationID("test_posts", reflect.TypeOf(TestPost{}), nil)
+	id3, err := generateMigrationID("test_posts", reflect.TypeOf(TestPost{}), nil)
+	require.NoError(t, err)
 	assert.NotEqual(t, id, id3, "Expected different migration IDs for different inputs")
 }
 
 func TestGenerateMigrationID_WithExtracols(t *testing.T) {
+	t.Parallel()
+
 	// Test generating migration ID with extra columns
 	extracols := map[string]string{"extra_col": "VARCHAR(100)"}
-	id := generateMigrationID("test_users", reflect.TypeOf(TestUser{}), extracols)
+	id, err := generateMigrationID("test_users", reflect.TypeOf(TestUser{}), extracols)
+	require.NoError(t, err)
 
 	assert.NotEmpty(t, id, "Expected non-empty migration ID")
 
 	// Test that extracols affect the ID
-	id2 := generateMigrationID("test_users", reflect.TypeOf(TestUser{}), nil)
+	id2, err := generateMigrationID("test_users", reflect.TypeOf(TestUser{}), nil)
+	require.NoError(t, err)
 	assert.NotEqual(t, id, id2, "Expected different migration IDs with and without extracols")
 }
 
 func TestGetLegacyColumnInfo(t *testing.T) {
+	t.Parallel()
+
 	// Test getting legacy column info
 	userType := reflect.TypeOf(TestUser{})
 
@@ -121,6 +140,8 @@ func TestGetLegacyColumnInfo(t *testing.T) {
 }
 
 func TestGetLegacyColumnInfo_String(t *testing.T) {
+	t.Parallel()
+
 	// Test string field
 	userType := reflect.TypeOf(TestUser{})
 	nameField, found := userType.FieldByName("Name")
@@ -133,6 +154,8 @@ func TestGetLegacyColumnInfo_String(t *testing.T) {
 }
 
 func TestGetLegacyColumnInfo_Time(t *testing.T) {
+	t.Parallel()
+
 	// Test time field
 	userType := reflect.TypeOf(TestUser{})
 	timeField, found := userType.FieldByName("CreateAt")
@@ -145,6 +168,8 @@ func TestGetLegacyColumnInfo_Time(t *testing.T) {
 }
 
 func TestGetColumnInfo_NewORM(t *testing.T) {
+	t.Parallel()
+
 	// Test new ORM tag parsing
 	userType := reflect.TypeOf(TestUser{})
 
@@ -159,6 +184,8 @@ func TestGetColumnInfo_NewORM(t *testing.T) {
 }
 
 func TestGetColumnInfo_Fallback(t *testing.T) {
+	t.Parallel()
+
 	// Test fallback to legacy tags
 	type LegacyModel struct {
 		ID   int    `pgname:"id" pgtype:"SERIAL PRIMARY KEY"`
@@ -177,18 +204,20 @@ func TestGetColumnInfo_Fallback(t *testing.T) {
 	assert.Equal(t, "INTEGER", colType)
 }
 
-func TestMD5Hash(t *testing.T) {
-	// Test MD5 hash generation
-	data := "test data"
-	hash := fmt.Sprintf("%x", md5.Sum([]byte(data)))
+func TestSHA256Hash(t *testing.T) {
+	t.Parallel()
 
-	assert.Len(t, hash, 32, "Expected MD5 hash length to be 32")
+	// Test SHA-256 hash generation
+	data := "test data"
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(data)))
+
+	assert.Len(t, hash, 64, "Expected SHA-256 hash length to be 64")
 
 	// Test consistency
-	hash2 := fmt.Sprintf("%x", md5.Sum([]byte(data)))
+	hash2 := fmt.Sprintf("%x", sha256.Sum256([]byte(data)))
 	assert.Equal(t, hash, hash2, "Expected consistent hash for same data")
 
 	// Test different data produces different hash
-	hash3 := fmt.Sprintf("%x", md5.Sum([]byte("different data")))
+	hash3 := fmt.Sprintf("%x", sha256.Sum256([]byte("different data")))
 	assert.NotEqual(t, hash, hash3, "Expected different hash for different data")
 }

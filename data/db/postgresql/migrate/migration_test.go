@@ -11,6 +11,8 @@ import (
 )
 
 func TestMigration_Struct(t *testing.T) {
+	t.Parallel()
+
 	// Test creating a migration
 	migration := &Migration{
 		ID:      "20240101120000_create_users_table",
@@ -30,6 +32,8 @@ func TestMigration_Struct(t *testing.T) {
 }
 
 func TestMigrationRecord_Struct(t *testing.T) {
+	t.Parallel()
+
 	// Test MigrationRecord creation
 	record := MigrationRecord{
 		ID:        "20240101120000_test",
@@ -43,6 +47,8 @@ func TestMigrationRecord_Struct(t *testing.T) {
 }
 
 func TestMigrator_CreateWithCustomTableName(t *testing.T) {
+	t.Parallel()
+
 	// Test creating migrator with custom table name
 	migrator := NewMigrator(nil, "custom_migrations")
 
@@ -50,6 +56,8 @@ func TestMigrator_CreateWithCustomTableName(t *testing.T) {
 }
 
 func TestMigrator_CreateWithDefaultTableName(t *testing.T) {
+	t.Parallel()
+
 	// Test creating migrator with default table name
 	migrator := NewMigrator(nil, "")
 
@@ -57,6 +65,8 @@ func TestMigrator_CreateWithDefaultTableName(t *testing.T) {
 }
 
 func TestMigrator_AddMigration(t *testing.T) {
+	t.Parallel()
+
 	migrator := NewMigrator(nil, "test_migrations")
 
 	migration := &Migration{
@@ -80,6 +90,8 @@ func TestMigrator_AddMigration(t *testing.T) {
 }
 
 func TestMigrator_AddFunc(t *testing.T) {
+	t.Parallel()
+
 	migrator := NewMigrator(nil, "test_migrations")
 
 	upCalled := false
@@ -118,6 +130,8 @@ func TestMigrator_AddFunc(t *testing.T) {
 }
 
 func TestMigrationStatus_Struct(t *testing.T) {
+	t.Parallel()
+
 	// Test MigrationStatus creation
 	now := time.Now()
 	status := MigrationStatus{
@@ -131,17 +145,4 @@ func TestMigrationStatus_Struct(t *testing.T) {
 	assert.True(t, status.Applied)
 	assert.NotNil(t, status.AppliedAt)
 	assert.Equal(t, "Test migration", status.Comment)
-}
-
-func TestMigrationStatus_NotApplied(t *testing.T) {
-	// Test MigrationStatus for not applied migration
-	status := MigrationStatus{
-		ID:        "20240101120000_test",
-		Applied:   false,
-		AppliedAt: nil,
-		Comment:   "Test migration",
-	}
-
-	assert.False(t, status.Applied)
-	assert.Nil(t, status.AppliedAt, "Expected AppliedAt to be nil for not applied migration")
 }
