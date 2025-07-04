@@ -2,8 +2,7 @@ package postgresql
 
 import (
 	"context"
-	"log/slog"
-	"time"
+	"database/sql"
 
 	"github.com/go-pantheon/fabrica-util/errors"
 	"github.com/jackc/pgx/v5"
@@ -11,142 +10,169 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type ColumnType string
-
-const (
-	JSONB ColumnType = "JSONB"
-	BYTEA ColumnType = "BYTEA"
-)
-
-// Config holds the configuration for PostgreSQL connection pool
-type Config struct {
-	DSN               string
-	DBName            string
-	MaxConns          int32
-	MinConns          int32
-	ConnMaxIdleTime   time.Duration
-	ConnMaxLifetime   time.Duration
-	ConnectTimeout    time.Duration
-	HealthCheckPeriod time.Duration
-	// Tracer is an optional pgx tracer for OpenTelemetry instrumentation
-	Tracer pgx.QueryTracer
+// DB is a wrapper around pgxpool.Pool that provides a sql.DB-like interface
+// while maintaining the performance benefits of pgx.
+// This allows for easier migration from database/sql to pgx without changing
+// the application interface significantly.
+type DB struct {
+	pool *pgxpool.Pool
 }
 
-func NewConfig(dsn, dbname string) Config {
-	config := DefaultConfig()
-	config.DSN = dsn
-	config.DBName = dbname
-
-	return config
-}
-
-// DefaultConfig returns a default configuration
-func DefaultConfig() Config {
-	return Config{
-		MaxConns:          20,
-		MinConns:          5,
-		ConnMaxIdleTime:   15 * time.Minute,
-		ConnMaxLifetime:   30 * time.Minute,
-		ConnectTimeout:    5 * time.Second,
-		HealthCheckPeriod: 1 * time.Minute,
-		Tracer:            nil, // No tracing by default
+// NewDB creates a new DB instance that wraps a pgxpool.Pool
+func NewDB(pool *pgxpool.Pool) *DB {
+	return &DB{
+		pool: pool,
 	}
 }
 
-// DBPool defines the interface for database operations, allowing for mocking.
-type DBPool interface {
-	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
-	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-	Close()
-}
-
-// New creates a new PostgreSQL connection pool with the given configuration
-func New(config Config) (pool *pgxpool.Pool, cleanup func(), err error) {
-	if config.DSN == "" {
-		return nil, nil, errors.New("dsn is empty")
-	}
-
-	if config.DBName == "" {
-		return nil, nil, errors.New("dbname is empty")
-	}
-
-	// Parse config from DSN
-	poolConfig, err := pgxpool.ParseConfig(config.DSN)
+// NewDBFromConfig creates a new DB instance from a Config
+func NewDBFromConfig(config Config) (*DB, func(), error) {
+	pool, cleanup, err := NewPool(config)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to parse DSN")
+		return nil, nil, err
 	}
 
-	// Configure connection pool
-	poolConfig.MaxConns = config.MaxConns
-	poolConfig.MinConns = config.MinConns
-	poolConfig.MaxConnIdleTime = config.ConnMaxIdleTime
-	poolConfig.MaxConnLifetime = config.ConnMaxLifetime
-	poolConfig.HealthCheckPeriod = config.HealthCheckPeriod
+	db := NewDB(pool)
+	return db, cleanup, nil
+}
 
-	// Add tracer if provided
-	if config.Tracer != nil {
-		poolConfig.ConnConfig.Tracer = config.Tracer
-	}
-
-	// Create connection pool with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), config.ConnectTimeout)
-	defer cancel()
-
-	pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
+// NewDBSimple creates a new DB instance with simple parameters
+func NewDBSimple(dsn, dbname string) (*DB, func(), error) {
+	pool, cleanup, err := NewPoolSimple(dsn, dbname)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to create connection pool")
+		return nil, nil, err
 	}
 
-	// Test connection
-	if err = pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, nil, errors.Wrap(err, "failed to ping database")
-	}
-
-	cleanup = func() {
-		pool.Close()
-		slog.Info("database connection pool closed")
-	}
-
-	return pool, cleanup, nil
+	db := NewDB(pool)
+	return db, cleanup, nil
 }
 
-// NewSimple creates a PostgreSQL connection pool with simple parameters (backward compatibility)
-func NewSimple(dsn, dbname string) (pool *pgxpool.Pool, cleanup func(), err error) {
-	config := DefaultConfig()
-	config.DSN = dsn
-	config.DBName = dbname
+// Exec executes a query without returning any rows
+func (db *DB) Exec(query string, args ...any) (sql.Result, error) {
+	return db.ExecContext(context.Background(), query, args...)
+}
 
-	pool, cleanup, err = New(config)
+// ExecContext executes a query without returning any rows with context
+func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if db.pool == nil {
+		return nil, errors.New("connection pool is nil")
+	}
+
+	cmdTag, err := db.pool.Exec(ctx, query, args...)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to create connection pool")
+		return nil, errors.Wrap(err, "failed to execute query")
 	}
 
-	return pool, cleanup, nil
+	return &pgxResult{cmdTag: cmdTag}, nil
 }
 
-// HealthCheck performs a health check on the database connection pool
-func HealthCheck(ctx context.Context, pool *pgxpool.Pool) error {
-	if pool == nil {
-		return errors.New("connection pool is nil")
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-
-	if err := pool.Ping(ctx); err != nil {
-		return errors.Wrap(err, "database health check failed")
-	}
-
-	return nil
+// Query executes a query that returns pgx.Rows (native pgx interface)
+func (db *DB) Query(query string, args ...any) (pgx.Rows, error) {
+	return db.QueryContext(context.Background(), query, args...)
 }
 
-// GetConnectionStats returns connection pool statistics
-func GetConnectionStats(pool *pgxpool.Pool) *pgxpool.Stat {
-	if pool == nil {
+// QueryContext executes a query that returns pgx.Rows with context
+func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (pgx.Rows, error) {
+	if db.pool == nil {
+		return nil, errors.New("connection pool is nil")
+	}
+
+	rows, err := db.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to execute query")
+	}
+
+	return rows, nil
+}
+
+// QueryRow executes a query that is expected to return at most one row
+func (db *DB) QueryRow(query string, args ...any) pgx.Row {
+	return db.QueryRowContext(context.Background(), query, args...)
+}
+
+// QueryRowContext executes a query that is expected to return at most one row with context
+func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) pgx.Row {
+	if db.pool == nil {
 		return nil
 	}
 
-	return pool.Stat()
+	return db.pool.QueryRow(ctx, query, args...)
+}
+
+// Begin starts a transaction
+func (db *DB) Begin() (pgx.Tx, error) {
+	return db.BeginTx(context.Background(), pgx.TxOptions{})
+}
+
+// BeginTx starts a transaction with options
+func (db *DB) BeginTx(ctx context.Context, opts pgx.TxOptions) (pgx.Tx, error) {
+	if db.pool == nil {
+		return nil, errors.New("connection pool is nil")
+	}
+
+	pgxTx, err := db.pool.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to begin transaction")
+	}
+
+	return pgxTx, nil
+}
+
+// Close closes the database connection pool
+func (db *DB) Close() error {
+	if db.pool == nil {
+		return nil
+	}
+
+	db.pool.Close()
+	return nil
+}
+
+// Ping verifies a connection to the database is still alive
+func (db *DB) Ping() error {
+	return db.PingContext(context.Background())
+}
+
+// PingContext verifies a connection to the database is still alive with context
+func (db *DB) PingContext(ctx context.Context) error {
+	if db.pool == nil {
+		return errors.New("connection pool is nil")
+	}
+
+	return db.pool.Ping(ctx)
+}
+
+// Stats returns database statistics
+func (db *DB) Stats() sql.DBStats {
+	if db.pool == nil {
+		return sql.DBStats{}
+	}
+
+	stat := db.pool.Stat()
+	return sql.DBStats{
+		MaxOpenConnections: int(stat.MaxConns()),
+		OpenConnections:    int(stat.TotalConns()),
+		InUse:              int(stat.AcquiredConns()),
+		Idle:               int(stat.IdleConns()),
+	}
+}
+
+// GetPool returns the underlying pgxpool.Pool
+func (db *DB) GetPool() *pgxpool.Pool {
+	return db.pool
+}
+
+// pgxResult implements sql.Result interface for pgx CommandTag
+type pgxResult struct {
+	cmdTag pgconn.CommandTag
+}
+
+// LastInsertId returns the last insert ID (not supported by PostgreSQL)
+func (r *pgxResult) LastInsertId() (int64, error) {
+	return 0, errors.New("LastInsertId is not supported by PostgreSQL")
+}
+
+// RowsAffected returns the number of rows affected by the query
+func (r *pgxResult) RowsAffected() (int64, error) {
+	return r.cmdTag.RowsAffected(), nil
 }
