@@ -1,18 +1,11 @@
 GOCMD=GO111MODULE=on CGO_ENABLED=0 go
 GOBUILD=${GOCMD} build
 
-# golangci-lint
-LINTER := bin/golangci-lint
-TOOLS_SHELL="./hack/tools.sh"
-
-$(LINTER):
-	curl -SL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v2.1.1
-
 .PHONY: init
 # Initialize environment
 init:
 	pre-commit install
-	go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
 	go install github.com/google/wire/cmd/wire@latest
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	go install github.com/envoyproxy/protoc-gen-validate@latest
