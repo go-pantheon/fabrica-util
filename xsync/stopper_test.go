@@ -2,6 +2,7 @@ package xsync
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -372,7 +373,7 @@ func TestStopper_TurnOffAlreadyClosing(t *testing.T) {
 func TestStopper_GoAndQuickStop(t *testing.T) {
 	t.Parallel()
 
-	stopper := NewStopper(time.Second)
+	stopper := NewStopper(time.Second, WithQuickStop())
 
 	var (
 		called []string
@@ -394,7 +395,7 @@ func TestStopper_GoAndQuickStop(t *testing.T) {
 		return nil
 	}
 
-	stopper.GoAndQuickStop("test", fn, stop)
+	stopper.GoAndStop("test", fn, stop)
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -404,6 +405,51 @@ func TestStopper_GoAndQuickStop(t *testing.T) {
 	assert.GreaterOrEqual(t, len(called), 2)
 	assert.Equal(t, "fn", called[0])
 	assert.Equal(t, "stop", called[1])
+}
+
+var _ Stoppable = (*StopperTest)(nil)
+
+type StopperTest struct {
+	*Stopper
+	goStopCounter  atomic.Int32
+	turnOffCounter atomic.Int32
+}
+
+func (s *StopperTest) Run(i int32) {
+	s.Go(fmt.Sprintf("go-%d", i), func() error {
+		defer s.goStopCounter.Add(1)
+		return nil
+	})
+}
+
+func (s *StopperTest) Stop(ctx context.Context) error {
+	s.TurnOff(func() error {
+		s.turnOffCounter.Add(s.goStopCounter.Load())
+		return nil
+	})
+
+	return nil
+}
+
+func TestStopper_GoAndFinalStop(t *testing.T) {
+	t.Parallel()
+
+	stopperTest := &StopperTest{
+		Stopper: NewStopper(time.Second, WithFinalStop()),
+	}
+
+	c := int32(10)
+
+	for i := range c {
+		stopperTest.Run(i)
+	}
+
+	time.Sleep(time.Millisecond * 1)
+
+	stopperTest.Stop(context.Background())
+
+	assert.Equal(t, c, stopperTest.goStopCounter.Load())
+	assert.Equal(t, c, stopperTest.turnOffCounter.Load())
 }
 
 func BenchmarkStopper_TriggerStop(b *testing.B) {

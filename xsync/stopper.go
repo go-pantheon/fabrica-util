@@ -48,25 +48,16 @@ type StopWaitable interface {
 type GoStopWaitable interface {
 	Go(msg string, fn func() error, filters ...func(err error) bool)
 	GoWaitStop(msg string, fn func() error)
+	GoAndStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool)
 	GoAndQuickStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool)
-	GoAndFinalStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool)
 }
 
-var _ Stoppable = (*Stopper)(nil)
+type stopType int
 
-// Stopper implements graceful shutdown with timeout
-type Stopper struct {
-	mu    sync.Mutex
-	state *atomic.Int32 // 0=idle, 1=triggered, 2=stopping, 3=stopped
-
-	trigger     chan struct{} // closed when stop is triggered
-	stoppedChan chan struct{} // closed when stopped
-
-	cond  *sync.Cond
-	ready bool
-
-	timeout time.Duration
-}
+const (
+	stopTypeQuick stopType = iota
+	stopTypeFinal
+)
 
 const (
 	stateIdle = iota
@@ -75,15 +66,55 @@ const (
 	stateStopped
 )
 
+var _ Stoppable = (*Stopper)(nil)
+
+// Stopper implements graceful shutdown with timeout
+type Stopper struct {
+	mu sync.Mutex
+
+	state       *atomic.Int32 // 0=idle, 1=triggered, 2=stopping, 3=stopped
+	trigger     chan struct{} // closed when stop is triggered
+	stoppedChan chan struct{} // closed when stopped
+
+	stopType             stopType
+	innerStopWg          sync.WaitGroup
+	innerStopTrigger     chan struct{}
+	innerStopTriggerOnce sync.Once
+
+	timeout time.Duration
+}
+
+type StopperOption func(*Stopper)
+
+func WithFinalStop() StopperOption {
+	return func(s *Stopper) {
+		s.stopType = stopTypeFinal
+	}
+}
+
+func WithQuickStop() StopperOption {
+	return func(s *Stopper) {
+		s.stopType = stopTypeQuick
+	}
+}
+
 // NewStopper creates a new Stopper implements Stoppable interface
-func NewStopper(timeout time.Duration) *Stopper {
-	return &Stopper{
+func NewStopper(timeout time.Duration, opts ...StopperOption) *Stopper {
+	s := &Stopper{
 		state:       &atomic.Int32{},
 		trigger:     make(chan struct{}),
 		stoppedChan: make(chan struct{}),
-		cond:        sync.NewCond(&sync.Mutex{}),
 		timeout:     timeout,
+
+		stopType:         stopTypeFinal, // default to final stop
+		innerStopTrigger: make(chan struct{}),
 	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
 }
 
 func (s *Stopper) TurnOff(f func() error) (err error) {
@@ -166,20 +197,26 @@ func (s *Stopper) toStoppedState() {
 	}
 }
 
-func (s *Stopper) GoAndQuickStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool) {
+func (s *Stopper) GoAndStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool) {
 	s.GoWaitStop(msg, stop)
 	s.Go(msg, fn, filters...)
 }
 
+func (s *Stopper) GoAndQuickStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool) {
+	s.stopType = stopTypeQuick
+	s.GoAndStop(msg, fn, stop, filters...)
+}
+
 func (s *Stopper) Go(msg string, fn func() error, filters ...func(err error) bool) {
 	Go(msg, func() error {
-		s.cond.L.Lock()
+		defer s.innerStopTriggerOnce.Do(func() {
+			close(s.innerStopTrigger)
+		})
 
-		defer func() {
-			s.ready = true
-			s.cond.Broadcast()
-			s.cond.L.Unlock()
-		}()
+		if s.stopType == stopTypeFinal {
+			s.innerStopWg.Add(1)
+			defer s.innerStopWg.Done()
+		}
 
 		return fn()
 	}, filters...)
@@ -187,18 +224,12 @@ func (s *Stopper) Go(msg string, fn func() error, filters ...func(err error) boo
 
 func (s *Stopper) GoWaitStop(msg string, fn func() error) {
 	Go(msg, func() error {
-		s.cond.L.Lock()
+		<-s.innerStopTrigger
 
-		for !s.ready {
-			s.cond.Wait()
+		if s.stopType == stopTypeFinal {
+			s.innerStopWg.Wait()
 		}
-
-		s.cond.L.Unlock()
 
 		return fn()
 	})
-}
-
-func (s *Stopper) GoAndFinalStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool) {
-	panic("not implemented")
 }
