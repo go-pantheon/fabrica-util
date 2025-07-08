@@ -18,7 +18,7 @@ A comprehensive PostgreSQL database migration library that supports version cont
 ## Installation
 
 ```go
-import "github.com/go-pantheon/fabrica-util/data/db/postgresql/migrate"
+import "github.com/go-pantheon/fabrica-util/data/db/pg/migrate"
 ```
 
 ## Core Components

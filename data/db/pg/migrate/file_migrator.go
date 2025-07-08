@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	xpg "github.com/go-pantheon/fabrica-util/data/db/postgresql"
+	"github.com/go-pantheon/fabrica-util/data/db/pg"
 	"github.com/go-pantheon/fabrica-util/errors"
 )
 
@@ -22,7 +22,7 @@ type FileMigrator struct {
 }
 
 // NewFileMigrator creates a new file-based migrator
-func NewFileMigrator(db xpg.DBPool, migrationsDir string, tableName string) *FileMigrator {
+func NewFileMigrator(db *pg.DB, migrationsDir string, tableName string) *FileMigrator {
 	return &FileMigrator{
 		Migrator:      NewMigrator(db, tableName),
 		migrationsDir: migrationsDir,
@@ -52,13 +52,13 @@ func (fm *FileMigrator) LoadMigrations() error {
 		migration := &Migration{
 			ID:      file.ID,
 			Comment: file.Comment,
-			Up: func(ctx context.Context, db xpg.DBPool) error {
+			Up: func(ctx context.Context, db *pg.DB) error {
 				return fm.executeSQLFile(ctx, db, file.UpPath)
 			},
 		}
 
 		if file.DownPath != "" {
-			migration.Down = func(ctx context.Context, db xpg.DBPool) error {
+			migration.Down = func(ctx context.Context, db *pg.DB) error {
 				return fm.executeSQLFile(ctx, db, file.DownPath)
 			}
 		}
@@ -141,7 +141,7 @@ func (fm *FileMigrator) findMigrationFiles() ([]MigrationFile, error) {
 }
 
 // executeSQLFile reads and executes SQL from a file
-func (fm *FileMigrator) executeSQLFile(ctx context.Context, db xpg.DBPool, filePath string) error {
+func (fm *FileMigrator) executeSQLFile(ctx context.Context, db *pg.DB, filePath string) error {
 	content, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return errors.Wrapf(err, "failed to read migration file %s", filePath)
@@ -160,7 +160,7 @@ func (fm *FileMigrator) executeSQLFile(ctx context.Context, db xpg.DBPool, fileP
 			continue
 		}
 
-		if _, err := db.Exec(ctx, stmt); err != nil {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
 			return errors.Wrapf(err, "failed to execute SQL statement in %s: %s", filePath, stmt)
 		}
 	}

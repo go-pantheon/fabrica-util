@@ -10,19 +10,19 @@ import (
 	"time"
 
 	"github.com/go-pantheon/fabrica-util/camelcase"
-	xpg "github.com/go-pantheon/fabrica-util/data/db/postgresql"
+	"github.com/go-pantheon/fabrica-util/data/db/pg"
 	"github.com/go-pantheon/fabrica-util/errors"
 )
 
 // Migrate migrates the database schema based on the model struct.
 // This function maintains backward compatibility with the original API.
-func Migrate(ctx context.Context, db xpg.DBPool, tableName string, model any, extracols map[string]string) error {
+func Migrate(ctx context.Context, db *pg.DB, tableName string, model any, extracols map[string]string) error {
 	return MigrateWithVersionControl(ctx, db, tableName, model, extracols, "auto_migrations")
 }
 
 // MigrateWithVersionControl migrates the database schema with version control.
 // It uses the new migration system to track changes and provide rollback capabilities.
-func MigrateWithVersionControl(ctx context.Context, db xpg.DBPool, tableName string, model any, extracols map[string]string, migrationTable string) error {
+func MigrateWithVersionControl(ctx context.Context, db *pg.DB, tableName string, model any, extracols map[string]string, migrationTable string) error {
 	modelType := reflect.TypeOf(model)
 	if modelType.Kind() == reflect.Ptr {
 		modelType = modelType.Elem()
@@ -53,10 +53,10 @@ func MigrateWithVersionControl(ctx context.Context, db xpg.DBPool, tableName str
 
 	// Create migration for table creation and initial columns
 	migrator.AddFunc(migrationID, fmt.Sprintf("Auto-migrate table %s", tableName),
-		func(ctx context.Context, db xpg.DBPool) error {
+		func(ctx context.Context, db *pg.DB) error {
 			return createTableAndColumns(ctx, db, tableName, modelType, extracols)
 		},
-		func(ctx context.Context, db xpg.DBPool) error {
+		func(ctx context.Context, db *pg.DB) error {
 			return dropTable(ctx, db, tableName)
 		},
 	)
@@ -78,7 +78,7 @@ type modelInfo struct {
 }
 
 // NewAutoMigrator creates a new auto-migrator instance
-func NewAutoMigrator(db xpg.DBPool, migrationTable string) *AutoMigrator {
+func NewAutoMigrator(db *pg.DB, migrationTable string) *AutoMigrator {
 	if migrationTable == "" {
 		migrationTable = "auto_migrations"
 	}
@@ -128,10 +128,10 @@ func (am *AutoMigrator) migrateModel(_ context.Context, tableName string, info m
 
 	// Add migration
 	am.AddFunc(migrationID, fmt.Sprintf("Auto-migrate table %s", tableName),
-		func(ctx context.Context, db xpg.DBPool) error {
+		func(ctx context.Context, db *pg.DB) error {
 			return createTableAndColumns(ctx, db, tableName, info.modelType, info.extracols)
 		},
-		func(ctx context.Context, db xpg.DBPool) error {
+		func(ctx context.Context, db *pg.DB) error {
 			return dropTable(ctx, db, tableName)
 		},
 	)
@@ -172,7 +172,7 @@ func generateMigrationID(tableName string, modelType reflect.Type, extracols map
 }
 
 // createTableAndColumns creates table and adds all columns
-func createTableAndColumns(ctx context.Context, db xpg.DBPool, tableName string, modelType reflect.Type, extracols map[string]string) error {
+func createTableAndColumns(ctx context.Context, db *pg.DB, tableName string, modelType reflect.Type, extracols map[string]string) error {
 	// Create table if not exists
 	if err := createTableIfNotExists(ctx, db, tableName, modelType); err != nil {
 		return err
@@ -185,7 +185,7 @@ func createTableAndColumns(ctx context.Context, db xpg.DBPool, tableName string,
 // addMissingColumnsWithVersionControl adds missing columns and creates new migrations for them
 //
 //nolint:gocognit
-func addMissingColumnsWithVersionControl(ctx context.Context, db xpg.DBPool, migrator *Migrator, tableName string, modelType reflect.Type, extracols map[string]string, baseMigrationID string) error {
+func addMissingColumnsWithVersionControl(ctx context.Context, db *pg.DB, migrator *Migrator, tableName string, modelType reflect.Type, extracols map[string]string, baseMigrationID string) error {
 	existingColumns, err := getExistingColumns(ctx, db, tableName)
 	if err != nil {
 		return err
@@ -221,11 +221,11 @@ func addMissingColumnsWithVersionControl(ctx context.Context, db xpg.DBPool, mig
 		newMigrationID := fmt.Sprintf("%s_add_columns_%x", baseMigrationID, hashSum[:4])
 
 		migrator.AddFunc(newMigrationID, fmt.Sprintf("Add columns to table %s", tableName),
-			func(ctx context.Context, db xpg.DBPool) error {
+			func(ctx context.Context, db *pg.DB) error {
 				for columnName, columnType := range expectedColumns {
 					if _, exists := existingColumns[columnName]; !exists {
 						alterSQL := fmt.Sprintf(`ALTER TABLE "%s" ADD COLUMN "%s" %s;`, tableName, columnName, columnType)
-						if _, err := db.Exec(ctx, alterSQL); err != nil {
+						if _, err := db.ExecContext(ctx, alterSQL); err != nil {
 							return errors.Wrapf(err, "failed to add column %s to table %s", columnName, tableName)
 						}
 					}
@@ -233,12 +233,12 @@ func addMissingColumnsWithVersionControl(ctx context.Context, db xpg.DBPool, mig
 
 				return nil
 			},
-			func(ctx context.Context, db xpg.DBPool) error {
+			func(ctx context.Context, db *pg.DB) error {
 				// Drop the newly added columns
 				for columnName := range expectedColumns {
 					if _, exists := existingColumns[columnName]; !exists {
 						alterSQL := fmt.Sprintf(`ALTER TABLE "%s" DROP COLUMN IF EXISTS "%s";`, tableName, columnName)
-						if _, err := db.Exec(ctx, alterSQL); err != nil {
+						if _, err := db.ExecContext(ctx, alterSQL); err != nil {
 							return errors.Wrapf(err, "failed to drop column %s from table %s", columnName, tableName)
 						}
 					}
@@ -255,16 +255,16 @@ func addMissingColumnsWithVersionControl(ctx context.Context, db xpg.DBPool, mig
 }
 
 // dropTable drops a table (used for rollback)
-func dropTable(ctx context.Context, db xpg.DBPool, tableName string) error {
+func dropTable(ctx context.Context, db *pg.DB, tableName string) error {
 	dropSQL := fmt.Sprintf(`DROP TABLE IF EXISTS "%s";`, tableName)
-	_, err := db.Exec(ctx, dropSQL)
+	_, err := db.ExecContext(ctx, dropSQL)
 
 	return errors.Wrapf(err, "failed to drop table %s", tableName)
 }
 
 // Below are the original functions, kept for internal use and backward compatibility
 
-func createTableIfNotExists(ctx context.Context, db xpg.DBPool, tableName string, modelType reflect.Type) error {
+func createTableIfNotExists(ctx context.Context, db *pg.DB, tableName string, modelType reflect.Type) error {
 	var columns []string
 
 	for i := 0; i < modelType.NumField(); i++ {
@@ -287,12 +287,12 @@ func createTableIfNotExists(ctx context.Context, db xpg.DBPool, tableName string
 	}
 
 	createSQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS "%s" (%s);`, tableName, strings.Join(columns, ", "))
-	_, err := db.Exec(ctx, createSQL)
+	_, err := db.ExecContext(ctx, createSQL)
 
 	return errors.Wrapf(err, "failed to create table %s", tableName)
 }
 
-func addMissingColumns(ctx context.Context, db xpg.DBPool, table string, t reflect.Type, extracols map[string]string) error {
+func addMissingColumns(ctx context.Context, db *pg.DB, table string, t reflect.Type, extracols map[string]string) error {
 	existingColumns, err := getExistingColumns(ctx, db, table)
 	if err != nil {
 		return err
@@ -317,7 +317,7 @@ func addMissingColumns(ctx context.Context, db xpg.DBPool, table string, t refle
 	for columnName, columnType := range expectedColumns {
 		if _, exists := existingColumns[columnName]; !exists {
 			alterSQL := fmt.Sprintf(`ALTER TABLE "%s" ADD COLUMN "%s" %s;`, table, columnName, columnType)
-			if _, err := db.Exec(ctx, alterSQL); err != nil {
+			if _, err := db.ExecContext(ctx, alterSQL); err != nil {
 				return errors.Wrapf(err, "failed to add column %s to table %s", columnName, table)
 			}
 		}
@@ -326,13 +326,13 @@ func addMissingColumns(ctx context.Context, db xpg.DBPool, table string, t refle
 	return nil
 }
 
-func getExistingColumns(ctx context.Context, db xpg.DBPool, tableName string) (map[string]bool, error) {
+func getExistingColumns(ctx context.Context, db *pg.DB, tableName string) (map[string]bool, error) {
 	query := `
 		SELECT column_name
 		FROM information_schema.columns
 		WHERE table_schema = 'public' AND table_name = $1;
 	`
-	rows, err := db.Query(ctx, query, tableName)
+	rows, err := db.QueryContext(ctx, query, tableName)
 
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to query existing columns for table %s", tableName)

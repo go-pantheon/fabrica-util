@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	xpg "github.com/go-pantheon/fabrica-util/data/db/postgresql"
+	"github.com/go-pantheon/fabrica-util/data/db/pg"
 )
 
 // Migration represents a database migration with up and down operations
 type Migration struct {
 	ID      string
-	Up      func(ctx context.Context, db xpg.DBPool) error
-	Down    func(ctx context.Context, db xpg.DBPool) error
+	Up      func(ctx context.Context, db *pg.DB) error
+	Down    func(ctx context.Context, db *pg.DB) error
 	Comment string
 }
 
@@ -25,13 +25,13 @@ type MigrationRecord struct {
 
 // Migrator handles database migrations
 type Migrator struct {
-	db         xpg.DBPool
+	db         *pg.DB
 	tableName  string
 	migrations map[string]*Migration
 }
 
 // NewMigrator creates a new migrator instance
-func NewMigrator(db xpg.DBPool, tableName string) *Migrator {
+func NewMigrator(db *pg.DB, tableName string) *Migrator {
 	if tableName == "" {
 		tableName = "schema_migrations"
 	}
@@ -49,7 +49,7 @@ func (m *Migrator) Add(migration *Migration) {
 }
 
 // AddFunc creates and adds a migration with functions
-func (m *Migrator) AddFunc(id, comment string, up, down func(ctx context.Context, db xpg.DBPool) error) {
+func (m *Migrator) AddFunc(id, comment string, up, down func(ctx context.Context, db *pg.DB) error) {
 	m.Add(&Migration{
 		ID:      id,
 		Up:      up,
@@ -68,7 +68,7 @@ func (m *Migrator) ensureMigrationTable(ctx context.Context) error {
 		);
 	`, m.tableName)
 
-	_, err := m.db.Exec(ctx, createSQL)
+	_, err := m.db.ExecContext(ctx, createSQL)
 
 	return err
 }
@@ -77,7 +77,7 @@ func (m *Migrator) ensureMigrationTable(ctx context.Context) error {
 func (m *Migrator) getAppliedMigrations(ctx context.Context) (map[string]bool, error) {
 	query := fmt.Sprintf(`SELECT "id" FROM "%s"`, m.tableName)
 
-	rows, err := m.db.Query(ctx, query)
+	rows, err := m.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (m *Migrator) recordMigration(ctx context.Context, migration *Migration) er
 		VALUES ($1, $2)
 	`, m.tableName)
 
-	_, err := m.db.Exec(ctx, insertSQL, migration.ID, migration.Comment)
+	_, err := m.db.ExecContext(ctx, insertSQL, migration.ID, migration.Comment)
 
 	return err
 }
@@ -113,7 +113,7 @@ func (m *Migrator) recordMigration(ctx context.Context, migration *Migration) er
 // removeMigrationRecord removes a migration record
 func (m *Migrator) removeMigrationRecord(ctx context.Context, migrationID string) error {
 	deleteSQL := fmt.Sprintf(`DELETE FROM "%s" WHERE "id" = $1`, m.tableName)
-	_, err := m.db.Exec(ctx, deleteSQL, migrationID)
+	_, err := m.db.ExecContext(ctx, deleteSQL, migrationID)
 
 	return err
 }
@@ -161,7 +161,7 @@ func (m *Migrator) Down(ctx context.Context) error {
 		LIMIT 1
 	`, m.tableName)
 
-	row := m.db.QueryRow(ctx, query)
+	row := m.db.QueryRowContext(ctx, query)
 
 	var lastMigrationID string
 
@@ -201,7 +201,7 @@ func (m *Migrator) DownTo(ctx context.Context, targetID string) error {
 		ORDER BY "applied_at" DESC
 	`, m.tableName)
 
-	rows, err := m.db.Query(ctx, query)
+	rows, err := m.db.QueryContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("failed to query applied migrations: %w", err)
 	}
@@ -264,7 +264,7 @@ func (m *Migrator) Reset(ctx context.Context) error {
 		ORDER BY "applied_at" DESC
 	`, m.tableName)
 
-	rows, err := m.db.Query(ctx, query)
+	rows, err := m.db.QueryContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("failed to query applied migrations: %w", err)
 	}
@@ -323,7 +323,7 @@ func (m *Migrator) Status(ctx context.Context) ([]MigrationStatus, error) {
 		SELECT "id", "applied_at", "comment" FROM "%s"
 	`, m.tableName)
 
-	rows, err := m.db.Query(ctx, query)
+	rows, err := m.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query applied migrations: %w", err)
 	}

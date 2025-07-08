@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	xpg "github.com/go-pantheon/fabrica-util/data/db/postgresql"
+	"github.com/go-pantheon/fabrica-util/data/db/pg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,10 +17,10 @@ func TestMigration_Struct(t *testing.T) {
 	migration := &Migration{
 		ID:      "20240101120000_create_users_table",
 		Comment: "Create users table",
-		Up: func(ctx context.Context, db xpg.DBPool) error {
+		Up: func(ctx context.Context, db *pg.DB) error {
 			return nil
 		},
-		Down: func(ctx context.Context, db xpg.DBPool) error {
+		Down: func(ctx context.Context, db *pg.DB) error {
 			return nil
 		},
 	}
@@ -72,8 +72,8 @@ func TestMigrator_AddMigration(t *testing.T) {
 	migration := &Migration{
 		ID:      "20240101120000_test",
 		Comment: "Test migration",
-		Up:      func(ctx context.Context, db xpg.DBPool) error { return nil },
-		Down:    func(ctx context.Context, db xpg.DBPool) error { return nil },
+		Up:      func(ctx context.Context, db *pg.DB) error { return nil },
+		Down:    func(ctx context.Context, db *pg.DB) error { return nil },
 	}
 
 	migrator.Add(migration)
@@ -97,12 +97,12 @@ func TestMigrator_AddFunc(t *testing.T) {
 	upCalled := false
 	downCalled := false
 
-	upFunc := func(ctx context.Context, db xpg.DBPool) error {
+	upFunc := func(ctx context.Context, db *pg.DB) error {
 		upCalled = true
 		return nil
 	}
 
-	downFunc := func(ctx context.Context, db xpg.DBPool) error {
+	downFunc := func(ctx context.Context, db *pg.DB) error {
 		downCalled = true
 		return nil
 	}

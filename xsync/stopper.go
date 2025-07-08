@@ -49,7 +49,6 @@ type GoStopWaitable interface {
 	Go(msg string, fn func() error, filters ...func(err error) bool)
 	GoWaitStop(msg string, fn func() error)
 	GoAndStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool)
-	GoAndQuickStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool)
 }
 
 type stopType int
@@ -137,7 +136,9 @@ func (s *Stopper) TurnOff(f func() error) (err error) {
 	go func() {
 		defer close(done)
 
-		err = f()
+		if sterr := f(); sterr != nil {
+			err = errors.Join(err, sterr)
+		}
 	}()
 
 	select {
@@ -200,11 +201,6 @@ func (s *Stopper) toStoppedState() {
 func (s *Stopper) GoAndStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool) {
 	s.GoWaitStop(msg, stop)
 	s.Go(msg, fn, filters...)
-}
-
-func (s *Stopper) GoAndQuickStop(msg string, fn func() error, stop func() error, filters ...func(err error) bool) {
-	s.stopType = stopTypeQuick
-	s.GoAndStop(msg, fn, stop, filters...)
 }
 
 func (s *Stopper) Go(msg string, fn func() error, filters ...func(err error) bool) {
