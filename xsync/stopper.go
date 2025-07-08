@@ -143,7 +143,7 @@ func (s *Stopper) TurnOff(f func() error) (err error) {
 
 	select {
 	case <-done:
-		return nil
+		return err
 	case <-ctx.Done():
 		return ErrTurnOffTimeout
 	}
