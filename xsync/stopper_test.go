@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewStopper(t *testing.T) {
@@ -423,7 +424,7 @@ func (s *StopperTest) Run(i int32) {
 }
 
 func (s *StopperTest) Stop(ctx context.Context) error {
-	s.TurnOff(func() error {
+	_ = s.TurnOff(func() error {
 		s.turnOffCounter.Add(s.goStopCounter.Load())
 		return nil
 	})
@@ -446,7 +447,8 @@ func TestStopper_GoAndFinalStop(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 1)
 
-	stopperTest.Stop(context.Background())
+	err := stopperTest.Stop(context.Background())
+	require.NoError(t, err)
 
 	assert.Equal(t, c, stopperTest.goStopCounter.Load())
 	assert.Equal(t, c, stopperTest.turnOffCounter.Load())
