@@ -10,6 +10,8 @@ import (
 
 var (
 	org     = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	short   = []byte("1")
+	long, _ = xrand.RandAlphaNumString(1024 * 1024)
 	empty   = []byte("")
 	utf8    = []byte("测试中文加密解密")
 	special = []byte("!@#$%^&*()_+-=[]{}|;:,.<>?")
@@ -27,6 +29,14 @@ func TestAESGCMCodec(t *testing.T) {
 			input: org,
 		},
 		{
+			name:  "short input",
+			input: short,
+		},
+		{
+			name:  "long input",
+			input: []byte(long),
+		},
+		{
 			name:  "chinese characters",
 			input: utf8,
 		},
@@ -36,13 +46,13 @@ func TestAESGCMCodec(t *testing.T) {
 		},
 	}
 
-	data, err := xrand.RandAlphaNumString(32)
+	key, err := xrand.RandAlphaNumString(32)
 	assert.Nil(t, err)
 
 	// Encrypt
-	server, err := NewAESCipher([]byte(data))
+	server, err := NewAESCipher([]byte(key))
 	require.Nil(t, err)
-	client, err := NewAESCipher([]byte(data))
+	client, err := NewAESCipher([]byte(key))
 	require.Nil(t, err)
 
 	for _, tt := range tests {
@@ -69,13 +79,13 @@ func TestAESGCMCodec(t *testing.T) {
 func TestAESGCMCodec_AllowEmpty(t *testing.T) {
 	t.Parallel()
 
-	data, err := xrand.RandAlphaNumString(32)
+	key, err := xrand.RandAlphaNumString(32)
 	assert.Nil(t, err)
 
-	server, err := NewAESCipher([]byte(data))
+	server, err := NewAESCipher([]byte(key))
 	require.Nil(t, err)
 
-	client, err := NewAESCipher([]byte(data))
+	client, err := NewAESCipher([]byte(key))
 	require.Nil(t, err)
 
 	tests := []struct {
@@ -117,7 +127,7 @@ func TestAESGCMCodec_AllowEmpty(t *testing.T) {
 func TestAESGCMDecrypt(t *testing.T) {
 	t.Parallel()
 
-	key, err := xrand.RandAlphaNumString(16)
+	key, err := xrand.RandAlphaNumString(32)
 	require.Nil(t, err)
 
 	cipher, err := NewAESCipher([]byte(key))
@@ -160,7 +170,7 @@ func TestAESGCMDecrypt(t *testing.T) {
 		},
 		{
 			name:    "more than nonce size input",
-			input:   append(encrypted, []byte("1234567890")...),
+			input:   append(encrypted, byte(1)),
 			wantErr: true,
 		},
 	}
