@@ -101,7 +101,7 @@ func (m *Migrator) getAppliedMigrations(ctx context.Context) (map[string]bool, e
 // recordMigration records a migration as applied
 func (m *Migrator) recordMigration(ctx context.Context, migration *Migration) error {
 	insertSQL := fmt.Sprintf(`
-		INSERT INTO "%s" ("id", "comment") 
+		INSERT INTO "%s" ("id", "comment")
 		VALUES ($1, $2)
 	`, m.tableName)
 
@@ -156,8 +156,8 @@ func (m *Migrator) Down(ctx context.Context) error {
 
 	// Get the last applied migration
 	query := fmt.Sprintf(`
-		SELECT "id" FROM "%s" 
-		ORDER BY "applied_at" DESC 
+		SELECT "id" FROM "%s"
+		ORDER BY "applied_at" DESC
 		LIMIT 1
 	`, m.tableName)
 
@@ -197,7 +197,7 @@ func (m *Migrator) DownTo(ctx context.Context, targetID string) error {
 
 	// Get all applied migrations ordered by applied_at DESC
 	query := fmt.Sprintf(`
-		SELECT "id" FROM "%s" 
+		SELECT "id" FROM "%s"
 		ORDER BY "applied_at" DESC
 	`, m.tableName)
 
@@ -260,7 +260,7 @@ func (m *Migrator) Reset(ctx context.Context) error {
 
 	// Get all applied migrations ordered by applied_at DESC
 	query := fmt.Sprintf(`
-		SELECT "id" FROM "%s" 
+		SELECT "id" FROM "%s"
 		ORDER BY "applied_at" DESC
 	`, m.tableName)
 

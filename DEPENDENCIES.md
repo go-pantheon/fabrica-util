@@ -27,8 +27,8 @@ Some packages may only be included on certain architectures or operating systems
  - [github.com/xdg-go/stringprep](https://pkg.go.dev/github.com/xdg-go/stringprep) ([Apache-2.0](https://github.com/xdg-go/stringprep/blob/v1.0.4/LICENSE))
  - [github.com/youmark/pkcs8](https://pkg.go.dev/github.com/youmark/pkcs8) ([MIT](https://github.com/youmark/pkcs8/blob/a2c0da244d78/LICENSE))
  - [go.mongodb.org/mongo-driver/v2](https://pkg.go.dev/go.mongodb.org/mongo-driver/v2) ([Apache-2.0](https://github.com/mongodb/mongo-go-driver/blob/v2.2.2/LICENSE))
- - [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto) ([BSD-3-Clause](https://cs.opensource.google/go/x/crypto/+/v0.39.0:LICENSE))
- - [golang.org/x/sync](https://pkg.go.dev/golang.org/x/sync) ([BSD-3-Clause](https://cs.opensource.google/go/x/sync/+/v0.15.0:LICENSE))
- - [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) ([BSD-3-Clause](https://cs.opensource.google/go/x/text/+/v0.26.0:LICENSE))
+ - [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto) ([BSD-3-Clause](https://cs.opensource.google/go/x/crypto/+/v0.40.0:LICENSE))
+ - [golang.org/x/sync](https://pkg.go.dev/golang.org/x/sync) ([BSD-3-Clause](https://cs.opensource.google/go/x/sync/+/v0.16.0:LICENSE))
+ - [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) ([BSD-3-Clause](https://cs.opensource.google/go/x/text/+/v0.27.0:LICENSE))
 
 [go-pantheon/fabrica-util]: https://github.com/go-pantheon/fabrica-util

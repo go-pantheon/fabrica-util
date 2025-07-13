@@ -33,7 +33,7 @@ package main
 import (
     "context"
     "log"
-    
+
     "github.com/go-pantheon/fabrica-util/data/db/postgresql"
     "github.com/go-pantheon/fabrica-util/data/db/postgresql/migrate"
 )
@@ -133,7 +133,7 @@ func main() {
     }
 
     ctx := context.Background()
-    
+
     // Method 1: Using backward-compatible API
     if err := migrate.Migrate(ctx, db, "users", User{}, nil); err != nil {
         log.Fatal("Migration failed:", err)
@@ -146,13 +146,13 @@ func main() {
 
     // Method 3: Using AutoMigrator to manage multiple models
     autoMigrator := migrate.NewAutoMigrator(db, "auto_migrations")
-    
+
     // Register models
     autoMigrator.RegisterModel("users", User{}, nil)
     autoMigrator.RegisterModel("posts", Post{}, map[string]string{
         "search_vector": "TSVECTOR",
     })
-    
+
     // Migrate all registered models
     if err := autoMigrator.MigrateAll(ctx); err != nil {
         log.Fatal("Auto migration failed:", err)
@@ -204,19 +204,19 @@ import "github.com/go-pantheon/fabrica-util/data/db/postgresql/migrate"
 
 func main() {
     parser := migrate.NewTagParser()
-    
+
     // Parse struct field tags
     field := reflect.StructField{
         Name: "Email",
         Type: reflect.TypeOf(""),
         Tag:  `orm:"size:255;unique;notNull;default:example@email.com"`,
     }
-    
+
     columnTag, err := parser.ParseTag(field)
     if err != nil {
         log.Fatal("Failed to parse tag:", err)
     }
-    
+
     // Generate column definition
     definition := parser.BuildColumnDefinition(columnTag)
     fmt.Printf("Column definition: %s\n", definition)
@@ -405,19 +405,19 @@ migrator.AddFunc("004_conditional_migration", "Add column if not exists",
         var exists bool
         err := db.QueryRow(ctx, `
             SELECT EXISTS (
-                SELECT 1 FROM information_schema.columns 
+                SELECT 1 FROM information_schema.columns
                 WHERE table_name = 'users' AND column_name = 'phone'
             )
         `).Scan(&exists)
-        
+
         if err != nil {
             return err
         }
-        
+
         if !exists {
             _, err = db.Exec(ctx, "ALTER TABLE users ADD COLUMN phone VARCHAR(20);")
         }
-        
+
         return err
     },
     nil, // Optional down migration
@@ -430,14 +430,14 @@ migrator.AddFunc("004_conditional_migration", "Add column if not exists",
 // Demonstrates how to handle incremental changes
 func incremental() {
     ctx := context.Background()
-    
+
     // Version 1: Basic user model
     type UserV1 struct {
         ID    int    `orm:"primaryKey;autoIncrement"`
         Email string `orm:"size:255;unique;notNull"`
         Name  string `orm:"size:100;notNull"`
     }
-    
+
     // Version 2: Add timestamps
     type UserV2 struct {
         ID        int       `orm:"primaryKey;autoIncrement"`
@@ -446,7 +446,7 @@ func incremental() {
         CreatedAt time.Time `orm:"default:NOW()"`
         UpdatedAt time.Time `orm:"default:NOW()"`
     }
-    
+
     // Version 3: Add profile fields
     type UserV3 struct {
         ID        int       `orm:"primaryKey;autoIncrement"`
@@ -457,7 +457,7 @@ func incremental() {
         CreatedAt time.Time `orm:"default:NOW()"`
         UpdatedAt time.Time `orm:"default:NOW()"`
     }
-    
+
     // Progressive migration
     migrate.MigrateWithVersionControl(ctx, db, "users", UserV1{}, nil, "incremental")
     migrate.MigrateWithVersionControl(ctx, db, "users", UserV2{}, nil, "incremental")
@@ -492,10 +492,10 @@ type MixedModel struct {
     // New syntax (preferred)
     ID   int    `orm:"primaryKey;autoIncrement"`
     Name string `orm:"size:255;notNull"`
-    
+
     // Old syntax (still supported)
     Email string `pgname:"email" pgtype:"VARCHAR(255) UNIQUE NOT NULL"`
-    
+
     // No tags (use type inference)
     CreatedAt time.Time
 }
