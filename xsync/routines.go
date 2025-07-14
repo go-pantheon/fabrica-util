@@ -2,8 +2,10 @@ package xsync
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"runtime"
+	"time"
 
 	"github.com/go-pantheon/fabrica-util/errors"
 )
@@ -14,6 +16,34 @@ const DefaultStackSize = 64 << 10 // 64KB
 const (
 	initialRoutineIDBuffer = 128
 )
+
+func Timeout(ctx context.Context, msg string, fn func() error, timeout time.Duration, filters ...func(err error) bool) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var (
+		errChan = make(chan error, 1)
+		done    = make(chan struct{})
+	)
+
+	Go(msg, func() error {
+		if err := fn(); err != nil {
+			errChan <- err
+		}
+
+		close(done)
+		return nil
+	})
+
+	select {
+	case err := <-errChan:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+		return nil
+	}
+}
 
 // Go executes a function in a separate goroutine with panic recovery.
 // It logs any errors that occur during execution.
@@ -122,7 +152,7 @@ func CatchErr(r any) error {
 // CatchErrWithSize creates an error with a custom sized stack trace from a recovered panic.
 // stackSize: the maximum size of the runtime stack in bytes (currently unused)
 // Deprecated: stackSize is no longer used, this function is equivalent to CatchErr.
-func CatchErrWithSize(r interface{}, _ int) error {
+func CatchErrWithSize(r any, _ int) error {
 	// Implementation is the same as CatchErr to maintain backwards compatibility
 	// while keeping the function signature stable
 	return CatchErr(r)

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sync"
 
 	pkgerrors "github.com/pkg/errors"
 )
@@ -121,4 +122,25 @@ func StackTrace(err error) string {
 	}
 
 	return buf.String()
+}
+
+var _ error = (*SafeJoinError)(nil)
+
+type SafeJoinError struct {
+	mu  sync.RWMutex
+	err error
+}
+
+func (e *SafeJoinError) Join(errs ...error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.err = errors.Join(errs...)
+}
+
+func (e *SafeJoinError) Error() string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	return e.err.Error()
 }
