@@ -131,6 +131,10 @@ type SafeJoinError struct {
 	err error
 }
 
+func NewSafeJoinError() *SafeJoinError {
+	return &SafeJoinError{}
+}
+
 func (e *SafeJoinError) Join(errs ...error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -138,9 +142,20 @@ func (e *SafeJoinError) Join(errs ...error) {
 	e.err = errors.Join(errs...)
 }
 
+func (e *SafeJoinError) HasError() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return e.err != nil
+}
+
 func (e *SafeJoinError) Error() string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
+
+	if e.err == nil {
+		return ""
+	}
 
 	return e.err.Error()
 }

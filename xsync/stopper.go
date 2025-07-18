@@ -133,13 +133,16 @@ func (s *Stopper) TurnOff(f func() error) (err error) {
 	defer cancel()
 
 	done := make(chan struct{})
-	go func() {
+
+	Go("stopper.turnoff", func() error {
 		defer close(done)
 
 		if sterr := f(); sterr != nil {
 			err = errors.Join(err, sterr)
 		}
-	}()
+
+		return nil
+	})
 
 	select {
 	case <-done:

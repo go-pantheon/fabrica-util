@@ -94,17 +94,19 @@ func (f *Future[T]) Cancel() {
 func Then[T, U any](f *Future[T], fn func(T) (U, error)) *Future[U] {
 	result := NewFuture[U]()
 
-	go func() {
+	Go("future.Then", func() error {
 		value, err := f.Get()
 		if err != nil {
 			result.Complete(result.value, err)
-			return
+			return nil
 		}
 
 		newValue, newErr := fn(value)
 
 		result.Complete(newValue, newErr)
-	}()
+
+		return nil
+	})
 
 	return result
 }
