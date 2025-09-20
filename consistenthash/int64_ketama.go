@@ -115,7 +115,7 @@ func (h *Int64HashRing) GetNode(key int64) (nodeName string, ok bool) {
 	if key >= 0 {
 		targetHash = uint64(key)
 	} else {
-		targetHash = uint64(-key)
+		targetHash = ^uint64(0) - uint64(-key) + 1 // Map negative numbers to the high range to keep hash distribution uniform
 	}
 
 	idx := sort.Search(len(h.nodes), func(i int) bool {
