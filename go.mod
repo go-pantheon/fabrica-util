@@ -3,7 +3,7 @@ module github.com/go-pantheon/fabrica-util
 go 1.24.4
 
 require (
-	github.com/jackc/pgx/v5 v5.7.5
+	github.com/jackc/pgx/v5 v5.7.6
 	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.11.0
 	github.com/spaolacci/murmur3 v1.1.0
