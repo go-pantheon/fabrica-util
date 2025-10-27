@@ -5,7 +5,7 @@ go 1.24.4
 require (
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/pkg/errors v0.9.1
-	github.com/redis/go-redis/v9 v9.11.0
+	github.com/redis/go-redis/v9 v9.16.0
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/speps/go-hashids/v2 v2.0.1
 	github.com/stretchr/testify v1.10.0
